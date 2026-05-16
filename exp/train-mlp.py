@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 from sklearn import (
     datasets,
     metrics,
@@ -27,3 +28,9 @@ pipeline.fit(X_train, y_train)
 
 y_pred = pipeline.predict(X_test)
 print(metrics.root_mean_squared_error(y_test, y_pred))
+
+_, ax = plt.subplots()
+ax.scatter(y_test, y_pred, alpha=0.3)
+lims = [min(y_test.min(), y_pred.min()), max(y_test.max(), y_pred.max())]
+ax.plot(lims, lims, "r--")
+plt.show()
