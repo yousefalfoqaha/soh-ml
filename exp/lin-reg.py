@@ -11,7 +11,7 @@ y = 2 + 5 * X + rng.standard_normal((m, 1))
 X_b = preprocessing.add_dummy_feature(X)
 theta_best = np.linalg.inv(X_b.T @ X_b) @ X_b.T @ y
 
-X_test = np.array([[0], [1]])
+X_test = np.array([0], [1])
 X_test_b = preprocessing.add_dummy_feature(X_test)
 y_predict = X_test_b @ theta_best
 

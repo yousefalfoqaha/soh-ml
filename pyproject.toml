@@ -10,8 +10,10 @@ dependencies = [
     "numpy>=2.4.4",
     "pandas>=3.0.3",
     "scikit-learn>=1.8.0",
+    "torch>=2.12.0",
 ]
 
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
+reportPrivateImportUsage = "none"
