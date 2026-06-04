@@ -11,6 +11,7 @@ MCUS_VALID = ["mcu3"]
 MCUS_TEST = ["mcu4"]
 
 DATA_PATH = Path("../data")
+RASTER_FREQ = 0.1
 
 samples = []
 
@@ -19,7 +20,10 @@ for mcu in MCUS_TRAIN:
 
     for root, _, files in os.walk(mcu_path):
         print(root)
-        # for file in files:
-        #     sample_path = Path(root) / file
-        #     sample_mdf = MDF(sample_path)
-        #     df = sample_mdf.to_dataframe(channels=["U", "Temp[0]", "I"], raster="U")
+        for file in files:
+            sample_path = Path(root) / file
+            sample_mdf = MDF(sample_path)
+            sample_mdf.get("U")
+            df = sample_mdf.to_dataframe(
+                channels=["U", "Temp[0]", "I"], raster=RASTER_FREQ
+            )
