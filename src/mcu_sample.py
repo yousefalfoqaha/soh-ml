@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import cast
 
 import h5py
 import numpy as np
@@ -7,12 +8,12 @@ import numpy as np
 class McuSample:
     def __init__(self, filepath: Path, qnom: int):
         with h5py.File(filepath, "r") as f:
-            signal = f["U"]
-            qneg = f["Qneg"]
+            self._group_path = self._find_channel_group(f)
+            signal = f[f"{self._group_path}/U"]
+            qneg = f[f"{self._group_path}/Qneg"]
 
             if not isinstance(signal, h5py.Dataset):
                 raise ValueError("Expected U to be a Dataset")
-
             if not isinstance(qneg, h5py.Dataset):
                 raise ValueError("Expected Qneg to be a Dataset")
 
@@ -23,17 +24,24 @@ class McuSample:
     def __len__(self):
         return self.n_samples
 
+    @staticmethod
+    def _find_channel_group(f: h5py.File) -> str:
+        def visitor(path, obj):
+            if isinstance(obj, h5py.Dataset):
+                return path.rsplit("/", 1)[0]
+
+        result = f.visititems(visitor)
+        if result is None:
+            raise KeyError("No datasets found in file")
+
+        return result
+
     def load_window(self, start: int, end: int) -> np.ndarray:
+        base_path = f"{self._group_path}/" if self._group_path else ""
+
         with h5py.File(self.filepath, "r") as f:
-            u = f["U"]
-            i = f["I"]
-            temp = f["Temp[1]"]
+            u = cast(h5py.Dataset, f[f"{base_path}U"])[start:end]
+            i = cast(h5py.Dataset, f[f"{base_path}I"])[start:end]
+            t = cast(h5py.Dataset, f[f"{base_path}Temp[1]"])[start:end]
 
-            if not isinstance(u, h5py.Dataset):
-                raise ValueError("Expected U to be a Dataset")
-            if not isinstance(i, h5py.Dataset):
-                raise ValueError("Expected I to be a Dataset")
-            if not isinstance(temp, h5py.Dataset):
-                raise ValueError("Expected Temp[1] to be a Dataset")
-
-            return np.stack([u[start:end], i[start:end], temp[start:end]])
+            return np.stack([u, i, t])

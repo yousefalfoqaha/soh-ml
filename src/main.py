@@ -25,6 +25,9 @@ def main():
         mcus=MCUS_TRAIN, data_path=hdf_data_path, window_length=1000
     )
 
+    for window, target in dataset_train:
+        print("Window:", window, "Target", target)
+
 
 if __name__ == "__main__":
     main()

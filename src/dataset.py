@@ -36,6 +36,15 @@ class McusDataset(torch.utils.data.Dataset):
         sample_idx, start_idx = self.window_map[idx]
         sample = self.samples[sample_idx]
         end_idx = start_idx + self.window_length
+
         window = sample.load_window(start_idx, end_idx)
 
-        return torch.from_numpy(window).float()
+        u = torch.from_numpy(window[0:1, :]).float()
+        i = torch.from_numpy(window[1:2, :]).float()
+        t = torch.from_numpy(window[2:3, :]).float()
+        soh = torch.full((1, self.window_length), sample.soh, dtype=torch.float32)
+
+        condition_x = torch.cat([i, soh], dim=0)
+        target_y = torch.cat([u, t], dim=0)
+
+        return condition_x, target_y
