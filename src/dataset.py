@@ -34,6 +34,7 @@ class McusDataset(torch.utils.data.Dataset):
             raise IndexError("dataset index out of range")
         sample_idx, window_idx = self.window_map[idx]
         sample = self.samples[sample_idx]
+        sample.load_window()
 
         end = idx + self.window_length
         window = self.series[idx:end]
