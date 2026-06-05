@@ -42,9 +42,10 @@ class McusDataset(torch.utils.data.Dataset):
         u = torch.from_numpy(window[0:1, :]).float()
         i = torch.from_numpy(window[1:2, :]).float()
         t = torch.from_numpy(window[2:3, :]).float()
+
         soh = torch.full((1, self.window_length), sample.soh, dtype=torch.float32)
 
-        condition_x = torch.cat([i, soh], dim=0)
+        condition_X = torch.cat([i, soh], dim=0)
         target_y = torch.cat([u, t], dim=0)
 
-        return condition_x, target_y
+        return condition_X, target_y

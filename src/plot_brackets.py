@@ -1,10 +1,11 @@
+import os
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 from asammdf import MDF
 
-DATA_PATH = Path(__file__).resolve().parent.parent / "data"
+DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "mf4"
 
 CHANNELS = ["U", "Temp[1]", "I"]
 CHANNEL_LABELS = ["Voltage (V)", "Temperature (°C)", "Current (A)"]
@@ -66,6 +67,13 @@ AGING_FILES = [
     ),
 ]
 
+AFTER_FILES = [
+    (
+        "Report 1",
+        "mcu1/after/sample01/Report_Samsung_INR21700-50E_BT1_MCU1_2025-04-02_13.51.41.mf4",
+    )
+]
+
 
 def get_metadata(mdf):
     available = set(mdf.channels_db.keys())
@@ -78,7 +86,9 @@ def get_metadata(mdf):
             if len(vals) <= 4:
                 meta[key] = f"{', '.join(f'{v:.1f}' for v in vals)} {unit}".strip()
             else:
-                meta[key] = f"[{len(vals)} vals] {float(np.nanmean(vals)):.1f} {unit}".strip()
+                meta[key] = (
+                    f"[{len(vals)} vals] {float(np.nanmean(vals)):.1f} {unit}".strip()
+                )
         else:
             meta[key] = "—"
     return meta
@@ -86,8 +96,13 @@ def get_metadata(mdf):
 
 def plot_bracket(file_list, title, out_path):
     n = len(file_list)
-    fig, axes = plt.subplots(4, n, figsize=(4 * n, 12),
-                              gridspec_kw={"height_ratios": [3, 3, 3, 2]})
+    fig, axes = plt.subplots(
+        4,
+        n,
+        figsize=(4 * n, 12),
+        gridspec_kw={"height_ratios": [3, 3, 3, 2]},
+        squeeze=False,
+    )
 
     for col, (label, rel_path) in enumerate(file_list):
         fpath = DATA_PATH / rel_path
@@ -115,9 +130,16 @@ def plot_bracket(file_list, title, out_path):
         for key, val in meta.items():
             if val != "—":
                 lines.append(f"{key}: {val}")
-        ax_meta.text(0.05, 0.95, "\n".join(lines), transform=ax_meta.transAxes,
-                     fontsize=7, verticalalignment="top", fontfamily="monospace",
-                     bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.8))
+        ax_meta.text(
+            0.05,
+            0.95,
+            "\n".join(lines),
+            transform=ax_meta.transAxes,
+            fontsize=7,
+            verticalalignment="top",
+            fontfamily="monospace",
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.8),
+        )
 
     fig.suptitle(title, fontsize=14, y=1.01)
     fig.tight_layout()
@@ -138,3 +160,8 @@ plot_bracket(
     Path(__file__).resolve().parent.parent / "plots" / "aging_sample01.png",
 )
 
+plot_bracket(
+    AFTER_FILES,
+    "After — mcu1/after",
+    Path(__file__).resolve().parent.parent / "plots" / "after_sample01.png",
+)
