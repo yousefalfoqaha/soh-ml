@@ -1,10 +1,6 @@
-import os
 from pathlib import Path
 
-import torch
-from asammdf import MDF
-
-from dataset import McusDataset
+import mf4_to_hdf
 
 MCUS_TRAIN = ["mcu1", "mcu2"]
 MCUS_VALID = ["mcu3"]
@@ -12,18 +8,17 @@ MCUS_TEST = ["mcu4"]
 
 DATA_PATH = Path("../data")
 RASTER_FREQ = 0.1
+TARGET_CHANNELS = ["U", "I", "Temp[1]", "Qneg"]
 
-samples = []
 
-for mcu in MCUS_TRAIN:
-    mcu_path = DATA_PATH / mcu
+def main():
+    mf4_to_hdf.convert(
+        data_path=DATA_PATH,
+        mcus=MCUS_TRAIN,
+        raster=RASTER_FREQ,
+        target_channels=TARGET_CHANNELS,
+    )
 
-    for root, _, files in os.walk(mcu_path):
-        print(root)
-        for file in files:
-            sample_path = Path(root) / file
-            sample_mdf = MDF(sample_path)
-            sample_mdf.get("U")
-            df = sample_mdf.to_dataframe(
-                channels=["U", "Temp[0]", "I"], raster=RASTER_FREQ
-            )
+
+if __name__ == "__main__":
+    main()
