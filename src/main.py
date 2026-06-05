@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import mf4_to_hdf
+from dataset import McusDataset
 
 MCUS_TRAIN = ["mcu1", "mcu2"]
 MCUS_VALID = ["mcu3"]
@@ -17,6 +18,11 @@ def main():
         mcus=MCUS_TRAIN,
         raster=RASTER_FREQ,
         target_channels=TARGET_CHANNELS,
+    )
+
+    hdf_data_path = DATA_PATH.joinpath("hdf")
+    dataset_train = McusDataset(
+        mcus=MCUS_TRAIN, data_path=hdf_data_path, window_length=1000
     )
 
 

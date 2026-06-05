@@ -17,7 +17,7 @@ class McusDataset(torch.utils.data.Dataset):
             for root, _, files in os.walk(data_path / mcu):
                 for file in files:
                     path = Path(root) / file
-                    sample = McuSample(filepath=path, raster=0.1, qnom=18000)
+                    sample = McuSample(filepath=path, qnom=18000)
                     sample_idx = len(self.samples)
                     self.samples.append(sample)
                     n_windows = (sample.n_samples - window_length) // stride + 1
@@ -32,11 +32,10 @@ class McusDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         if idx >= len(self):
             raise IndexError("dataset index out of range")
-        sample_idx, window_idx = self.window_map[idx]
-        sample = self.samples[sample_idx]
-        sample.load_window()
 
-        end = idx + self.window_length
-        window = self.series[idx:end]
-        target = self.series[end]
-        return window, target
+        sample_idx, start_idx = self.window_map[idx]
+        sample = self.samples[sample_idx]
+        end_idx = start_idx + self.window_length
+        window = sample.load_window(start_idx, end_idx)
+
+        return torch.from_numpy(window).float()
