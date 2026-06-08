@@ -40,7 +40,3 @@ def convert(
                         )
                         mdf.close()
                         print(f"Finished converting: {hdf_path.name}")
-                    else:
-                        print(
-                            f"Skipping (already exists): {hdf_path.relative_to(hdf_root)}"
-                        )
