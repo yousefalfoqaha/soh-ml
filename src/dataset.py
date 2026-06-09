@@ -58,7 +58,7 @@ class McusDataset(torch.utils.data.Dataset):
 
         soh = torch.full((self.window_length,), sample.soh, dtype=torch.float32)
 
-        condition_X = torch.stack([i, soh], dim=1)  # Perfect [1000, 2] Layout
-        target_y = torch.stack([u, t], dim=1)  # Perfect [1000, 2] Layout
+        condition_X = torch.stack([i, soh], dim=1)
+        target_y = torch.stack([u, t], dim=1)
 
         return condition_X, target_y

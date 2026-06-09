@@ -23,11 +23,11 @@ TARGET_CHANNELS = ["U", "I", "Temp[1]", "Qneg"]
 RAND_SEED = 42
 PLOT_EPOCHS = {1, 10, 20, 30}
 
-N_EPOCHS = 30
-BATCH_SIZE = 128
-LEARNING_RATE = 0.0015
+N_EPOCHS = 50
+BATCH_SIZE = 64
+LEARNING_RATE = 0.0005
 HIDDEN_SIZE = 128
-WINDOW_LENGTH = 4000
+WINDOW_LENGTH = 2000
 
 
 def main():
@@ -104,7 +104,7 @@ def train_and_validate(
 
         model.train()
 
-        for batch_idx, (X_batch, y_batch) in enumerate(train_loader):
+        for X_batch, y_batch in train_loader:
             X_batch, y_batch = X_batch.to(device), y_batch.to(device)
 
             optimizer.zero_grad()
@@ -115,16 +115,6 @@ def train_and_validate(
             optimizer.step()
 
             total_train_loss += loss.item()
-
-            if (batch_idx + 1) % 100 == 0 or (batch_idx + 1) == len(train_loader):
-                print(
-                    f"\rEpoch {epoch + 1:02d} | Batch {batch_idx + 1}/{len(train_loader)} "
-                    f"| Running Loss: {total_train_loss / (batch_idx + 1):.5f}",
-                    end="",
-                    flush=True,
-                )
-
-        print()
 
         model.eval()
 
