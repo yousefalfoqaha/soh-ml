@@ -56,7 +56,8 @@ class McusDataset(torch.utils.data.Dataset):
         i = torch.from_numpy(scaled_i).float()
         t = torch.from_numpy(scaled_t).float()
 
-        soh = torch.full((self.window_length,), sample.soh, dtype=torch.float32)
+        scaled_soh = (sample.soh - self.stats["SoH"]["mean"]) / self.stats["SoH"]["std"]
+        soh = torch.full((self.window_length,), scaled_soh, dtype=torch.float32)
 
         condition_X = torch.stack([i, soh], dim=1)
         target_y = torch.stack([u, t], dim=1)

@@ -8,10 +8,15 @@ class LstmModel(nn.Module):
         self.lstm = nn.LSTM(
             input_size=input_size,
             hidden_size=hidden_size,
+            num_layers=2,
             batch_first=True,
         )
 
-        self.output = nn.Linear(hidden_size, output_size)
+        self.output = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_size // 2, output_size),
+        )
 
     def forward(self, X):
         lstm_outputs, _ = self.lstm(X)

@@ -7,7 +7,7 @@ from mcu_sample import McuSample
 
 
 def calculate_global_stats(data_path: Path, mcus: list[str]) -> dict:
-    print("\n[INFO] Starting global statistics calculation...")
+    print("\nStarting global statistics calculation...")
     n_time_steps = 0
 
     u_sum = 0.0
@@ -17,6 +17,8 @@ def calculate_global_stats(data_path: Path, mcus: list[str]) -> dict:
     u_sum_sq = 0.0
     i_sum_sq = 0.0
     t_sum_sq = 0.0
+
+    soh_values = []
 
     for mcu in mcus:
         mcu_source_path = data_path / mcu
@@ -29,12 +31,11 @@ def calculate_global_stats(data_path: Path, mcus: list[str]) -> dict:
             for file in files:
                 if file.lower().endswith(".hdf"):
                     sample_path = Path(root) / file
-
-                    print(f"Accumulating metrics from: {sample_path.name}...")
-
                     sample = McuSample(filepath=sample_path, qnom=18000)
                     n_samples = len(sample)
                     n_time_steps += n_samples
+
+                    soh_values.append(sample.soh)
 
                     data = sample.load_window(start=0, end=n_samples)
                     u = data[0, :]
@@ -60,14 +61,22 @@ def calculate_global_stats(data_path: Path, mcus: list[str]) -> dict:
     i_std = np.sqrt(max((i_sum_sq / n_time_steps) - (i_mean**2), 1e-8))
     t_std = np.sqrt(max((t_sum_sq / n_time_steps) - (t_mean**2), 1e-8))
 
+    soh_arr = np.array(soh_values, dtype=np.float64)
+    soh_mean = float(np.mean(soh_arr))
+    soh_std = float(np.std(soh_arr))
+    if soh_std < 1e-8:
+        soh_std = 1.0
+
     print("      GLOBAL SCALING STATISTICS CALCULATED")
     print(f"Total Time Steps Sampled : {n_time_steps:,}")
     print(f"Voltage (U)   -> Mean: {u_mean:10.4f} | Std: {u_std:10.4f}")
     print(f"Current (I)   -> Mean: {i_mean:10.4f} | Std: {i_std:10.4f}")
     print(f"Temp          -> Mean: {t_mean:10.4f} | Std: {t_std:10.4f}")
+    print(f"SoH           -> Mean: {soh_mean:10.4f} | Std: {soh_std:10.4f}")
 
     return {
         "U": {"mean": float(u_mean), "std": float(u_std)},
         "I": {"mean": float(i_mean), "std": float(i_std)},
         "Temp": {"mean": float(t_mean), "std": float(t_std)},
+        "SoH": {"mean": soh_mean, "std": soh_std},
     }

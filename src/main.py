@@ -24,8 +24,8 @@ RAND_SEED = 42
 PLOT_EPOCHS = {1, 10, 20, 30}
 
 N_EPOCHS = 50
-BATCH_SIZE = 64
-LEARNING_RATE = 0.0005
+BATCH_SIZE = 128
+LEARNING_RATE = 0.0009
 HIDDEN_SIZE = 128
 WINDOW_LENGTH = 2000
 
@@ -78,9 +78,22 @@ def main():
     model = LstmModel(input_size=2, hidden_size=HIDDEN_SIZE, output_size=2).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     criterion = torch.nn.HuberLoss()
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer,
+        T_max=N_EPOCHS,
+        eta_min=1e-5,
+    )
 
     train_and_validate(
-        model, optimizer, criterion, loader_train, loader_valid, N_EPOCHS, device
+        model,
+        optimizer,
+        criterion,
+        loader_train,
+        loader_valid,
+        scheduler,
+        N_EPOCHS,
+        device,
+        stats,
     )
 
 
@@ -90,8 +103,10 @@ def train_and_validate(
     criterion: Module,
     train_loader: DataLoader,
     valid_loader: DataLoader,
+    scheduler,
     n_epochs: int,
     device: str,
+    stats: dict,
 ) -> None:
     print(f"Starting training for {n_epochs} epochs on {device}...")
     print(
@@ -116,6 +131,8 @@ def train_and_validate(
 
             total_train_loss += loss.item()
 
+        scheduler.step()
+
         model.eval()
 
         with torch.no_grad():
@@ -132,7 +149,7 @@ def train_and_validate(
                     sample_true = y_val[0, :, :].cpu().numpy()
                     sample_pred = y_val_pred[0, :, :].cpu().numpy()
 
-                    plot_battery_comparison(sample_true, sample_pred, epoch)
+                    plot_battery_comparison(sample_true, sample_pred, epoch, stats)
                     plotted = True
 
         mean_train_loss = total_train_loss / len(train_loader)
@@ -141,30 +158,47 @@ def train_and_validate(
         print(
             f"Epoch {epoch + 1:02d}/{n_epochs} | "
             f"Train Loss: {mean_train_loss:.5f} | "
-            f"Valid Loss: {mean_valid_loss:.5f}\n"
+            f"Valid Loss: {mean_valid_loss:.5f}"
         )
 
 
-def plot_battery_comparison(y_true: np.ndarray, y_pred: np.ndarray, epoch: int) -> None:
+def plot_battery_comparison(
+    y_true: np.ndarray, y_pred: np.ndarray, epoch: int, stats: dict
+) -> None:
+    u_stats = stats["U"]
+    t_stats = stats["Temp"]
+
+    y_true_denorm = y_true.copy()
+    y_true_denorm[:, 0] = y_true[:, 0] * u_stats["std"] + u_stats["mean"]
+    y_true_denorm[:, 1] = y_true[:, 1] * t_stats["std"] + t_stats["mean"]
+
+    y_pred_denorm = y_pred.copy()
+    y_pred_denorm[:, 0] = y_pred[:, 0] * u_stats["std"] + u_stats["mean"]
+    y_pred_denorm[:, 1] = y_pred[:, 1] * t_stats["std"] + t_stats["mean"]
+
     fig, axs = plt.subplots(2, 2, figsize=(10, 8), layout="constrained")
 
     time_steps, _ = y_true.shape
     t = np.arange(time_steps)
 
-    axs[0, 0].plot(t, y_true[:, 0], color="black", label="True U")
+    axs[0, 0].plot(t, y_true_denorm[:, 0], color="black", label="True U")
     axs[0, 0].set_title("True Voltage")
     axs[0, 0].set_ylabel("Voltage (V)")
 
-    axs[0, 1].plot(t, y_true[:, 1], color="darkred", label="True Temp")
+    axs[0, 1].plot(t, y_true_denorm[:, 1], color="darkred", label="True Temp")
     axs[0, 1].set_title("True Temperature")
     axs[0, 1].set_ylabel("Temperature (°C)")
 
-    axs[1, 0].plot(t, y_pred[:, 0], color="black", linestyle="--", label="Pred U")
+    axs[1, 0].plot(
+        t, y_pred_denorm[:, 0], color="black", linestyle="--", label="Pred U"
+    )
     axs[1, 0].set_title("Predicted Voltage")
     axs[1, 0].set_ylabel("Voltage (V)")
     axs[1, 0].set_xlabel("Time Steps (0.1s)")
 
-    axs[1, 1].plot(t, y_pred[:, 1], color="darkred", linestyle="--", label="Pred Temp")
+    axs[1, 1].plot(
+        t, y_pred_denorm[:, 1], color="darkred", linestyle="--", label="Pred Temp"
+    )
     axs[1, 1].set_title("Predicted Temperature")
     axs[1, 1].set_ylabel("Temperature (°C)")
     axs[1, 1].set_xlabel("Time Steps (0.1s)")
