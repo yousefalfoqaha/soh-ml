@@ -29,6 +29,8 @@ class McusDataset(torch.utils.data.Dataset):
                         start_idx = i * stride
                         self.window_map.append((sample_idx, start_idx))
 
+        print(f"Mapped {len(self.window_map):,} windows from {len(mcus)} MCU(s).")
+
     def __len__(self):
         return len(self.window_map)
 

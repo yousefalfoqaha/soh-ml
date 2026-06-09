@@ -24,10 +24,10 @@ RAND_SEED = 42
 PLOT_EPOCHS = {1, 10, 20, 30}
 
 N_EPOCHS = 30
-BATCH_SIZE = 32
-LEARNING_RATE = 0.001
-HIDDEN_SIZE = 64
-WINDOW_LENGTH = 1000
+BATCH_SIZE = 128
+LEARNING_RATE = 0.0015
+HIDDEN_SIZE = 128
+WINDOW_LENGTH = 4000
 
 
 def main():
@@ -60,8 +60,20 @@ def main():
         stats=stats,
     )
 
-    loader_train = DataLoader(dataset_train, batch_size=BATCH_SIZE, shuffle=True)
-    loader_valid = DataLoader(dataset_valid, batch_size=BATCH_SIZE, shuffle=False)
+    loader_train = DataLoader(
+        dataset_train,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True,
+    )
+    loader_valid = DataLoader(
+        dataset_valid,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        num_workers=4,
+        pin_memory=True,
+    )
 
     model = LstmModel(input_size=2, hidden_size=HIDDEN_SIZE, output_size=2).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
@@ -81,11 +93,18 @@ def train_and_validate(
     n_epochs: int,
     device: str,
 ) -> None:
+    print(f"Starting training for {n_epochs} epochs on {device}...")
+    print(
+        f"Train batches: {len(train_loader)} | Validation batches: {len(valid_loader)}"
+    )
+
     for epoch in range(n_epochs):
         total_valid_loss = 0.0
         total_train_loss = 0.0
 
-        for X_batch, y_batch in train_loader:
+        model.train()
+
+        for batch_idx, (X_batch, y_batch) in enumerate(train_loader):
             X_batch, y_batch = X_batch.to(device), y_batch.to(device)
 
             optimizer.zero_grad()
@@ -96,6 +115,16 @@ def train_and_validate(
             optimizer.step()
 
             total_train_loss += loss.item()
+
+            if (batch_idx + 1) % 100 == 0 or (batch_idx + 1) == len(train_loader):
+                print(
+                    f"\rEpoch {epoch + 1:02d} | Batch {batch_idx + 1}/{len(train_loader)} "
+                    f"| Running Loss: {total_train_loss / (batch_idx + 1):.5f}",
+                    end="",
+                    flush=True,
+                )
+
+        print()
 
         model.eval()
 
@@ -122,7 +151,7 @@ def train_and_validate(
         print(
             f"Epoch {epoch + 1:02d}/{n_epochs} | "
             f"Train Loss: {mean_train_loss:.5f} | "
-            f"Valid Loss: {mean_valid_loss:.5f}"
+            f"Valid Loss: {mean_valid_loss:.5f}\n"
         )
 
 
