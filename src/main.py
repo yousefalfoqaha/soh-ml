@@ -19,15 +19,15 @@ MCUS_TEST = ["mcu3"]
 DATA_PATH = Path("../data")
 PLOTS_PATH = Path("../plots")
 RASTER_FREQ = 0.1
-TARGET_CHANNELS = ["U", "I", "Temp[1]", "Qneg"]
+CHANNELS = ["U", "I", "Temp[1]", "Qneg", "Qpos", "ClimaTemp"]
 RAND_SEED = 42
 PLOT_EPOCHS = {1, 10, 20, 30}
 
 N_EPOCHS = 50
 BATCH_SIZE = 128
-LEARNING_RATE = 0.0009
+LEARNING_RATE = 0.0020
 HIDDEN_SIZE = 128
-WINDOW_LENGTH = 2000
+WINDOW_LENGTH = 300
 
 
 def main():
@@ -40,7 +40,7 @@ def main():
         data_path=DATA_PATH,
         mcus=all_mcus,
         raster=RASTER_FREQ,
-        target_channels=TARGET_CHANNELS,
+        channels=CHANNELS,
     )
 
     hdf_data_path = DATA_PATH.joinpath("hdf")
@@ -75,7 +75,7 @@ def main():
         pin_memory=True,
     )
 
-    model = LstmModel(input_size=2, hidden_size=HIDDEN_SIZE, output_size=2).to(device)
+    model = LstmModel(input_size=4, hidden_size=HIDDEN_SIZE, output_size=2).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     criterion = torch.nn.HuberLoss()
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(

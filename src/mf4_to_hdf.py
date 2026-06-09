@@ -5,7 +5,7 @@ from asammdf import MDF
 
 
 def convert_to_hdf(
-    data_path: Path, mcus: list[str], raster: float, target_channels: list[str]
+    data_path: Path, mcus: list[str], raster: float, channels: list[str]
 ):
     mf4_root = data_path / "mf4"
     hdf_root = data_path / "hdf"
@@ -31,7 +31,7 @@ def convert_to_hdf(
                         print(
                             f"Converting {sample_path.name} -> {hdf_path.relative_to(hdf_root)}..."
                         )
-                        mdf = MDF(name=sample_path, channels=target_channels)
+                        mdf = MDF(name=sample_path, channels=channels)
                         mdf.export(
                             fmt="hdf5",
                             filename=hdf_path,

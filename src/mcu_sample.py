@@ -43,5 +43,8 @@ class McuSample:
             u = cast(h5py.Dataset, f[f"{base_path}U"])[start:end]
             i = cast(h5py.Dataset, f[f"{base_path}I"])[start:end]
             t = cast(h5py.Dataset, f[f"{base_path}Temp[1]"])[start:end]
+            q = cast(h5py.Dataset, f[f"{base_path}Qneg"])[start:end]
+            qpos = cast(h5py.Dataset, f[f"{base_path}Qpos"])[start:end]
+            ct = cast(h5py.Dataset, f[f"{base_path}ClimaTemp"])[start:end]
 
-            return np.stack([u, i, t])
+            return np.stack([u, i, t, q, qpos, ct])
