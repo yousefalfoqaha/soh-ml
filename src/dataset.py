@@ -7,10 +7,13 @@ from mcu_sample import McuSample
 
 
 class McusDataset(torch.utils.data.Dataset):
-    def __init__(self, mcus: list[str], data_path: Path, window_length: int):
+    def __init__(
+        self, mcus: list[str], data_path: Path, window_length: int, stats: dict
+    ):
         self.samples: list[McuSample] = []
         self.window_map: list[tuple[int, int]] = []
         self.window_length = window_length
+        self.stats = stats
         stride = window_length
 
         for mcu in mcus:
@@ -39,13 +42,21 @@ class McusDataset(torch.utils.data.Dataset):
 
         window = sample.load_window(start_idx, end_idx)
 
-        u = torch.from_numpy(window[0:1, :]).float()
-        i = torch.from_numpy(window[1:2, :]).float()
-        t = torch.from_numpy(window[2:3, :]).float()
+        raw_u = window[0, :]
+        raw_i = window[1, :]
+        raw_t = window[2, :]
 
-        soh = torch.full((1, self.window_length), sample.soh, dtype=torch.float32)
+        scaled_u = (raw_u - self.stats["U"]["mean"]) / self.stats["U"]["std"]
+        scaled_i = (raw_i - self.stats["I"]["mean"]) / self.stats["I"]["std"]
+        scaled_t = (raw_t - self.stats["Temp"]["mean"]) / self.stats["Temp"]["std"]
 
-        condition_X = torch.cat([i, soh], dim=1)
-        target_y = torch.cat([u, t], dim=1)
+        u = torch.from_numpy(scaled_u).float()
+        i = torch.from_numpy(scaled_i).float()
+        t = torch.from_numpy(scaled_t).float()
+
+        soh = torch.full((self.window_length,), sample.soh, dtype=torch.float32)
+
+        condition_X = torch.stack([i, soh], dim=1)  # Perfect [1000, 2] Layout
+        target_y = torch.stack([u, t], dim=1)  # Perfect [1000, 2] Layout
 
         return condition_X, target_y

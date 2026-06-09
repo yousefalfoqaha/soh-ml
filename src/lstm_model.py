@@ -14,5 +14,5 @@ class LstmModel(nn.Module):
         self.output = nn.Linear(hidden_size, output_size)
 
     def forward(self, X):
-        lstm_outputs = self.lstm(X)
+        lstm_outputs, _ = self.lstm(X)
         return self.output(lstm_outputs)

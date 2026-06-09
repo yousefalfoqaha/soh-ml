@@ -4,7 +4,7 @@ from pathlib import Path
 from asammdf import MDF
 
 
-def convert(
+def convert_to_hdf(
     data_path: Path, mcus: list[str], raster: float, target_channels: list[str]
 ):
     mf4_root = data_path / "mf4"
