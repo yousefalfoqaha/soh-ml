@@ -56,7 +56,9 @@ class McusDataset(torch.utils.data.Dataset):
         scaled_t = (raw_t - self.stats["Temp"]["mean"]) / self.stats["Temp"]["std"]
         scaled_q = (raw_q - self.stats["Qneg"]["mean"]) / self.stats["Qneg"]["std"]
         scaled_qp = (raw_qp - self.stats["Qpos"]["mean"]) / self.stats["Qpos"]["std"]
-        scaled_ct = (raw_ct - self.stats["ClimaTemp"]["mean"]) / self.stats["ClimaTemp"]["std"]
+        scaled_ct = (raw_ct - self.stats["ClimaTemp"]["mean"]) / self.stats[
+            "ClimaTemp"
+        ]["std"]
 
         u = torch.from_numpy(scaled_u).float()
         i = torch.from_numpy(scaled_i).float()

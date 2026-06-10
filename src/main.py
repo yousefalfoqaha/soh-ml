@@ -19,7 +19,16 @@ MCUS_TEST = ["mcu3"]
 DATA_PATH = Path("../data")
 PLOTS_PATH = Path("../plots")
 RASTER_FREQ = 0.1
-CHANNELS = ["U", "I", "Temp[1]", "Qneg", "Qpos", "ClimaTemp"]
+CHANNELS = [
+    "U",
+    "I",
+    "Temp[1]",
+    "Qneg",
+    "Qpos",
+    "ClimaTemp",
+    "sgl_charge_time_start",
+    "sgl_charge_time_end",
+]
 RAND_SEED = 42
 PLOT_EPOCHS = {1, 10, 20, 30}
 
