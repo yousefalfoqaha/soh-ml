@@ -8,8 +8,7 @@ import numpy as np
 class McuSample:
     def __init__(self, filepath: Path, qnom: int):
         with h5py.File(filepath, "r") as f:
-            self._group_path = self._find_channel_group(f)
-            signal = f[f"{self._group_path}/U"]
+            signal = f["U"]
             qneg = f[f"{self._group_path}/Qneg"]
 
             if not isinstance(signal, h5py.Dataset):
@@ -17,9 +16,12 @@ class McuSample:
             if not isinstance(qneg, h5py.Dataset):
                 raise ValueError("Expected Qneg to be a Dataset")
 
+            self.type = filepath.parts[4]
             self.filepath = filepath
             self.n_samples = len(signal)
-            self.soh = abs(float(np.min(qneg))) / qnom * 100
+
+            if self.type is "initial":
+                self.soh = 1
 
     def __len__(self):
         return self.n_samples

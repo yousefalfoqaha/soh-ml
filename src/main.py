@@ -8,8 +8,8 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 from dataset import McusDataset
+from hdf_converter import HdfConverter
 from lstm_model import LstmModel
-from mf4_to_hdf import convert_to_hdf
 from standardization import calculate_global_stats
 
 MCUS_TRAIN = ["mcu1"]
@@ -23,11 +23,7 @@ CHANNELS = [
     "U",
     "I",
     "Temp[1]",
-    "Qneg",
-    "Qpos",
     "ClimaTemp",
-    "sgl_charge_time_start",
-    "sgl_charge_time_end",
 ]
 RAND_SEED = 42
 PLOT_EPOCHS = {1, 10, 20, 30}
@@ -44,13 +40,8 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    all_mcus = MCUS_TRAIN + MCUS_VALID + MCUS_TEST
-    convert_to_hdf(
-        data_path=DATA_PATH,
-        mcus=all_mcus,
-        raster=RASTER_FREQ,
-        channels=CHANNELS,
-    )
+    hdf_converter = HdfConverter(DATA_PATH, RASTER_FREQ, CHANNELS)
+    hdf_converter.process_mcus(MCUS_TRAIN + MCUS_VALID)
 
     hdf_data_path = DATA_PATH.joinpath("hdf")
 
