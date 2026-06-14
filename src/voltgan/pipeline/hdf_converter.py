@@ -5,7 +5,7 @@ import h5py
 import numpy as np
 from asammdf import MDF
 
-from pipeline import PipelineHandler, SampleContext
+from voltgan.pipeline.base import PipelineHandler, SampleContext
 
 
 class HdfConvertHandler(PipelineHandler):
@@ -80,3 +80,4 @@ class HdfConvertHandler(PipelineHandler):
                 del f["soh_timestamps"]
             f.attrs["soh_file"] = soh_file
             f.attrs["soh_method"] = soh_method
+

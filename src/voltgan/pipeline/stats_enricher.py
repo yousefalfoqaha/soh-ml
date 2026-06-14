@@ -1,7 +1,7 @@
 import h5py
 import numpy as np
 
-from pipeline import PipelineHandler, SampleContext
+from voltgan.pipeline.base import PipelineHandler, SampleContext
 
 
 class StatsEnrichHandler(PipelineHandler):
@@ -35,3 +35,4 @@ class StatsEnrichHandler(PipelineHandler):
 
         print(f"  Stats enriched: {hdf_path.name}")
         return ctx
+
