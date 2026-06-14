@@ -20,8 +20,9 @@ MCUS_TRAIN = ["mcu1"]
 MCUS_VALID = ["mcu2"]
 MCUS_TEST = ["mcu3"]
 
-DATA_PATH = Path("../data")
-PLOTS_PATH = Path("../plots")
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_PATH = _PROJECT_ROOT / "data"
+PLOTS_PATH = _PROJECT_ROOT / "plots"
 RASTER_FREQ = 0.1
 CHANNELS = ["U", "I", "Temp[1]", "ClimaTemp"]
 RAND_SEED = 42

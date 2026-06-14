@@ -1,4 +1,3 @@
-import torch
 from torch import nn
 
 
@@ -11,9 +10,8 @@ class LstmModel(nn.Module):
         self.num_layers = num_layers
         self.hidden_size = hidden_size
 
-        self.hidden_state_input = nn.Linear(
-            init_condition_size, num_layers * hidden_size
-        )
+        self.h0_linear = nn.Linear(init_condition_size, num_layers * hidden_size)
+        self.c0_linear = nn.Linear(init_condition_size, num_layers * hidden_size)
 
         self.lstm = nn.LSTM(
             input_size=input_size,
@@ -31,10 +29,20 @@ class LstmModel(nn.Module):
     def forward(self, X, init_cond):
         batch_size = X.shape[0]
 
-        h_state = self.hidden_state_input(init_cond)
+        h_state = self.h0_linear(init_cond)
+        c_state = self.c0_linear(init_cond)
 
-        h_0 = h_state.view(self.num_layers, batch_size, self.hidden_size)
-        c_0 = torch.zeros_like(h_0)
+        h_0 = (
+            h_state.view(batch_size, self.num_layers, self.hidden_size)
+            .permute(1, 0, 2)
+            .contiguous()
+        )
+        c_0 = (
+            c_state.view(batch_size, self.num_layers, self.hidden_size)
+            .permute(1, 0, 2)
+            .contiguous()
+        )
+
         lstm_outputs, _ = self.lstm(X, (h_0, c_0))
 
         return self.output(lstm_outputs)

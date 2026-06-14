@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 
 import h5py
-import numpy as np
 from asammdf import MDF
 
 from voltgan.pipeline.base import PipelineHandler, SampleContext
@@ -28,7 +27,7 @@ class HdfConvertHandler(PipelineHandler):
 
         if hdf_path.exists():
             try:
-                dataset_stage = mf4_path.parts[4].lower()
+                dataset_stage = mf4_path.parts[5].lower()
             except IndexError:
                 dataset_stage = "unknown"
 
@@ -40,7 +39,7 @@ class HdfConvertHandler(PipelineHandler):
         hdf_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            dataset_stage = mf4_path.parts[4].lower()
+            dataset_stage = mf4_path.parts[5].lower()
         except IndexError:
             dataset_stage = "unknown"
 
