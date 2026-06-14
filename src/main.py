@@ -31,9 +31,9 @@ PLOT_EPOCHS = {1, 10, 20, 30}
 
 N_EPOCHS = 50
 BATCH_SIZE = 128
-LEARNING_RATE = 0.0020
+LEARNING_RATE = 0.0025
 HIDDEN_SIZE = 128
-WINDOW_LENGTH = 500
+WINDOW_LENGTH = 1000
 
 
 def main():
@@ -199,7 +199,7 @@ def plot_battery_comparison(
     y_pred_denorm[:, 0] = y_pred[:, 0] * u_stats["std"] + u_stats["mean"]
     y_pred_denorm[:, 1] = y_pred[:, 1] * t_stats["std"] + t_stats["mean"]
 
-    fig, axs = plt.subplots(2, 2, figsize=(10, 8), layout="constrained")
+    fig, axs = plt.subplots(2, 2, figsize=(10, 8), layout="constrained", sharey="col")
 
     time_steps, _ = y_true.shape
     t = np.arange(time_steps)
@@ -208,16 +208,16 @@ def plot_battery_comparison(
     axs[0, 0].set_title("True Voltage")
     axs[0, 0].set_ylabel("Voltage (V)")
 
-    axs[0, 1].plot(t, y_true_denorm[:, 1], color="darkred", label="True Temp")
-    axs[0, 1].set_title("True Temperature")
-    axs[0, 1].set_ylabel("Temperature (°C)")
-
     axs[1, 0].plot(
         t, y_pred_denorm[:, 0], color="black", linestyle="--", label="Pred U"
     )
     axs[1, 0].set_title("Predicted Voltage")
     axs[1, 0].set_ylabel("Voltage (V)")
     axs[1, 0].set_xlabel("Time Steps (0.1s)")
+
+    axs[0, 1].plot(t, y_true_denorm[:, 1], color="darkred", label="True Temp")
+    axs[0, 1].set_title("True Temperature")
+    axs[0, 1].set_ylabel("Temperature (°C)")
 
     axs[1, 1].plot(
         t, y_pred_denorm[:, 1], color="darkred", linestyle="--", label="Pred Temp"
@@ -229,6 +229,17 @@ def plot_battery_comparison(
     for row in axs:
         for ax in row:
             ax.grid(True, alpha=0.3)
+            ax.ticklabel_format(useOffset=False, style="plain", axis="y")
+
+    u_ymin, u_ymax = axs[0, 0].get_ylim()
+    if u_ymax - u_ymin < 0.05:
+        mid_u = (u_ymax + u_ymin) / 2
+        axs[0, 0].set_ylim(mid_u - 0.025, mid_u + 0.025)
+
+    t_ymin, t_ymax = axs[0, 1].get_ylim()
+    if t_ymax - t_ymin < 0.5:
+        mid_t = (t_ymax + t_ymin) / 2
+        axs[0, 1].set_ylim(mid_t - 0.25, mid_t + 0.25)
 
     fig.suptitle(f"Epoch {epoch} results")
 

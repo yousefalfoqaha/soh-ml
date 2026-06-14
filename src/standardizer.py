@@ -38,10 +38,11 @@ class Standardizer:
                     m2 = float(f.attrs.get(f"{key}_m2", 0.0))
 
                     if key not in channel_stats:
-                        channel_stats[key] = {"sum": 0.0, "m2_sum": 0.0}
+                        channel_stats[key] = {"sum": 0.0, "m2_sum": 0.0, "sum_sq": 0.0}
 
                     channel_stats[key]["sum"] += mean * n
                     channel_stats[key]["m2_sum"] += m2
+                    channel_stats[key]["sum_sq"] += mean * mean * n
 
         if total_rows == 0:
             raise ValueError("No data points found.")
@@ -49,7 +50,7 @@ class Standardizer:
         result: dict[str, dict[str, float]] = {}
         for channel, stats in channel_stats.items():
             mean = stats["sum"] / total_rows
-            var = stats["m2_sum"] / total_rows
+            var = (stats["m2_sum"] + stats["sum_sq"] - total_rows * mean * mean) / total_rows
             std = float(np.sqrt(max(var, 1e-8)))
             result[channel] = {"mean": float(mean), "std": std}
 

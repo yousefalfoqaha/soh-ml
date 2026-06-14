@@ -7,7 +7,7 @@ from pipeline import PipelineHandler, SampleContext
 class StatsEnrichHandler(PipelineHandler):
     @property
     def order(self) -> int:
-        return 1
+        return 2
 
     def handle(self, ctx: SampleContext) -> SampleContext:
         hdf_path = ctx.output_path

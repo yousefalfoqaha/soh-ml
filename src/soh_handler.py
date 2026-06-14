@@ -66,7 +66,7 @@ def _merge_intervals(
 
 
 class DischargeTimeMergeStrategy(SohStrategy):
-    MERGE_GAP_SECONDS = 1000.0
+    MERGE_GAP_SECONDS = 3000.0
 
     def can_handle(self, mdf: MDF) -> bool:
         channels = mdf.channels_db
@@ -312,4 +312,3 @@ class Mf4SohHandler(PipelineHandler):
         )
 
         return ctx
-
