@@ -23,17 +23,17 @@ MCUS_TEST = ["mcu3"]
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_PATH = _PROJECT_ROOT / "dataset"
 PLOTS_PATH = _PROJECT_ROOT / "plots"
-RASTER_FREQ = 0.1
+RASTER_FREQ = 0.2
 CHANNELS = ["U", "I", "Temp[1]", "ClimaTemp"]
 RAND_SEED = 42
 PLOT_EPOCHS = {1, 10, 20, 30}
 
 N_EPOCHS = 50
 BATCH_SIZE = 64
-LEARNING_RATE = 0.0020
+LEARNING_RATE = 0.0025
 HIDDEN_SIZE = 128
-WINDOW_LENGTH = 10000
-STRIDE = 3000
+WINDOW_LENGTH = 5000
+STRIDE = 1000
 
 
 def main():
@@ -87,14 +87,10 @@ def main():
     )
 
     model = LstmModel(
-        input_size=1,
-        num_layers=2,
-        init_condition_size=4,
-        hidden_size=HIDDEN_SIZE,
-        output_size=2,
+        input_size=5, num_layers=2, hidden_size=HIDDEN_SIZE, output_size=2
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    criterion = torch.nn.HuberLoss()
+    criterion = torch.nn.L1Loss()
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer,
         T_max=N_EPOCHS,
@@ -201,38 +197,37 @@ def plot_battery_comparison(
     y_pred_denorm[:, 0] = y_pred[:, 0] * u_stats["std"] + u_stats["mean"]
     y_pred_denorm[:, 1] = y_pred[:, 1] * t_stats["std"] + t_stats["mean"]
 
-    fig, axs = plt.subplots(2, 2, figsize=(10, 8), layout="constrained")
+    fig, axs = plt.subplots(1, 2, figsize=(12, 5), layout="constrained")
 
     time_steps, _ = y_true.shape
     t = np.arange(time_steps)
 
-    axs[0, 0].plot(t, y_true_denorm[:, 0], color="black", label="True U")
-    axs[0, 0].set_title("True Voltage")
-    axs[0, 0].set_ylabel("Voltage (V)")
-
-    axs[0, 1].plot(t, y_true_denorm[:, 1], color="darkred", label="True Temp")
-    axs[0, 1].set_title("True Temperature")
-    axs[0, 1].set_ylabel("Temperature (°C)")
-
-    axs[1, 0].plot(
-        t, y_pred_denorm[:, 0], color="black", linestyle="--", label="Pred U"
+    axs[0].plot(t, y_true_denorm[:, 0], color="black", label="True U")
+    axs[0].plot(
+        t, y_pred_denorm[:, 0], color="red", linestyle="--", label="Pred U", alpha=0.8
     )
-    axs[1, 0].set_title("Predicted Voltage")
-    axs[1, 0].set_ylabel("Voltage (V)")
-    axs[1, 0].set_xlabel("Time Steps (0.1s)")
+    axs[0].set_title("Voltage Comparison")
+    axs[0].set_ylabel("Voltage (V)")
+    axs[0].set_xlabel("Time Steps (0.1s)")
+    axs[0].grid(True, alpha=0.3)
+    axs[0].legend()
 
-    axs[1, 1].plot(
-        t, y_pred_denorm[:, 1], color="darkred", linestyle="--", label="Pred Temp"
+    axs[1].plot(t, y_true_denorm[:, 1], color="darkred", label="True Temp")
+    axs[1].plot(
+        t,
+        y_pred_denorm[:, 1],
+        color="blue",
+        linestyle="--",
+        label="Pred Temp",
+        alpha=0.8,
     )
-    axs[1, 1].set_title("Predicted Temperature")
-    axs[1, 1].set_ylabel("Temperature (°C)")
-    axs[1, 1].set_xlabel("Time Steps (0.1s)")
+    axs[1].set_title("Temperature Comparison")
+    axs[1].set_ylabel("Temperature (°C)")
+    axs[1].set_xlabel("Time Steps (0.1s)")
+    axs[1].grid(True, alpha=0.3)
+    axs[1].legend()
 
-    for row in axs:
-        for ax in row:
-            ax.grid(True, alpha=0.3)
-
-    fig.suptitle(f"Epoch {epoch} results")
+    fig.suptitle(f"Epoch {epoch} Results")
 
     fig.savefig(
         PLOTS_PATH.joinpath(f"epoch_{epoch:02d}.png"), dpi=150, bbox_inches="tight"

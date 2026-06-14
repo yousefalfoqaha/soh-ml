@@ -52,4 +52,3 @@ class Mf4SohHandler(PipelineHandler):
         )
 
         return ctx
-
