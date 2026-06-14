@@ -21,7 +21,7 @@ MCUS_VALID = ["mcu2"]
 MCUS_TEST = ["mcu3"]
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_PATH = _PROJECT_ROOT / "data"
+DATA_PATH = _PROJECT_ROOT / "dataset"
 PLOTS_PATH = _PROJECT_ROOT / "plots"
 RASTER_FREQ = 0.1
 CHANNELS = ["U", "I", "Temp[1]", "ClimaTemp"]
@@ -29,7 +29,7 @@ RAND_SEED = 42
 PLOT_EPOCHS = {1, 10, 20, 30}
 
 N_EPOCHS = 50
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 LEARNING_RATE = 0.0020
 HIDDEN_SIZE = 128
 WINDOW_LENGTH = 10000

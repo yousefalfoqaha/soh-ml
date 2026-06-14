@@ -53,4 +53,3 @@ class Pipeline:
                         f"[{handler.__class__.__name__}] Interrupted: {ctx.interrupted}"
                     )
                     break
-
