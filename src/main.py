@@ -1,5 +1,8 @@
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -8,9 +11,12 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 from dataset import McusDataset
-from hdf_converter import HdfConverter
+from hdf_converter import HdfConvertHandler
 from lstm_model import LstmModel
-from standardization import calculate_global_stats
+from pipeline import Pipeline
+from soh_handler import Mf4SohHandler
+from standardizer import Standardizer
+from stats_enricher import StatsEnrichHandler
 
 MCUS_TRAIN = ["mcu1"]
 MCUS_VALID = ["mcu2"]
@@ -19,12 +25,7 @@ MCUS_TEST = ["mcu3"]
 DATA_PATH = Path("../data")
 PLOTS_PATH = Path("../plots")
 RASTER_FREQ = 0.1
-CHANNELS = [
-    "U",
-    "I",
-    "Temp[1]",
-    "ClimaTemp",
-]
+CHANNELS = ["U", "I", "Temp[1]", "ClimaTemp"]
 RAND_SEED = 42
 PLOT_EPOCHS = {1, 10, 20, 30}
 
@@ -32,7 +33,7 @@ N_EPOCHS = 50
 BATCH_SIZE = 128
 LEARNING_RATE = 0.0020
 HIDDEN_SIZE = 128
-WINDOW_LENGTH = 300
+WINDOW_LENGTH = 500
 
 
 def main():
@@ -40,12 +41,20 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    hdf_converter = HdfConverter(DATA_PATH, RASTER_FREQ, CHANNELS)
-    hdf_converter.process_mcus(MCUS_TRAIN + MCUS_VALID)
+    pipeline = Pipeline(
+        DATA_PATH,
+        handlers=[
+            Mf4SohHandler(qnom=18000.0, raster=RASTER_FREQ),
+            HdfConvertHandler(DATA_PATH, RASTER_FREQ, CHANNELS),
+            StatsEnrichHandler(),
+        ],
+    )
+    pipeline.run(MCUS_TRAIN + MCUS_VALID)
 
-    hdf_data_path = DATA_PATH.joinpath("hdf")
+    hdf_data_path = DATA_PATH / "hdf"
 
-    stats = calculate_global_stats(data_path=hdf_data_path, mcus=MCUS_TRAIN)
+    standardizer = Standardizer(hdf_data_path)
+    stats = standardizer.compute(MCUS_TRAIN)
 
     dataset_train = McusDataset(
         mcus=MCUS_TRAIN,
@@ -75,7 +84,13 @@ def main():
         pin_memory=True,
     )
 
-    model = LstmModel(input_size=4, hidden_size=HIDDEN_SIZE, output_size=2).to(device)
+    model = LstmModel(
+        input_size=2,
+        num_layers=2,
+        init_condition_size=3,
+        hidden_size=HIDDEN_SIZE,
+        output_size=2,
+    ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     criterion = torch.nn.HuberLoss()
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -119,11 +134,15 @@ def train_and_validate(
 
         model.train()
 
-        for X_batch, y_batch in train_loader:
-            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+        for X_batch, init_cond, y_batch in train_loader:
+            X_batch, init_cond, y_batch = (
+                X_batch.to(device),
+                init_cond.to(device),
+                y_batch.to(device),
+            )
 
             optimizer.zero_grad()
-            y_pred = model(X_batch)
+            y_pred = model(X_batch, init_cond)
             loss = criterion(y_pred, y_batch)
 
             loss.backward()
@@ -137,10 +156,14 @@ def train_and_validate(
 
         with torch.no_grad():
             plotted = False
-            for X_val, y_val in valid_loader:
-                X_val, y_val = X_val.to(device), y_val.to(device)
+            for X_val, init_cond, y_val in valid_loader:
+                X_val, init_cond, y_val = (
+                    X_val.to(device),
+                    init_cond.to(device),
+                    y_val.to(device),
+                )
 
-                y_val_pred = model(X_val)
+                y_val_pred = model(X_val, init_cond)
                 val_loss = criterion(y_val_pred, y_val)
 
                 total_valid_loss += val_loss.item()
@@ -166,7 +189,7 @@ def plot_battery_comparison(
     y_true: np.ndarray, y_pred: np.ndarray, epoch: int, stats: dict
 ) -> None:
     u_stats = stats["U"]
-    t_stats = stats["Temp"]
+    t_stats = stats["Temp[1]"]
 
     y_true_denorm = y_true.copy()
     y_true_denorm[:, 0] = y_true[:, 0] * u_stats["std"] + u_stats["mean"]
