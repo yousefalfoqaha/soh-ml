@@ -32,7 +32,8 @@ N_EPOCHS = 50
 BATCH_SIZE = 128
 LEARNING_RATE = 0.0020
 HIDDEN_SIZE = 128
-WINDOW_LENGTH = 500
+WINDOW_LENGTH = 10000
+STRIDE = 3000
 
 
 def main():
@@ -59,12 +60,14 @@ def main():
         mcus=MCUS_TRAIN,
         data_path=hdf_data_path,
         window_length=WINDOW_LENGTH,
+        stride=STRIDE,
         stats=stats,
     )
     dataset_valid = McusDataset(
         mcus=MCUS_VALID,
         data_path=hdf_data_path,
         window_length=WINDOW_LENGTH,
+        stride=STRIDE,
         stats=stats,
     )
 
@@ -84,9 +87,9 @@ def main():
     )
 
     model = LstmModel(
-        input_size=2,
+        input_size=1,
         num_layers=2,
-        init_condition_size=3,
+        init_condition_size=4,
         hidden_size=HIDDEN_SIZE,
         output_size=2,
     ).to(device)
