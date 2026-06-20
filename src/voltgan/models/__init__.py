@@ -1,1 +1,2 @@
+from voltgan.models.battery_telemetry_transformer import BatteryTelementryTransformer
 from voltgan.models.lstm import LstmModel
