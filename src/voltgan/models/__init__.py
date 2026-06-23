@@ -1,3 +1,4 @@
-from voltgan.models.battery_telemetry_transformer import BatteryTelementryTransformer
 from voltgan.models.lstm import LstmModel
-from voltgan.models.positional_embedding import PositionalEmbedding
+from voltgan.models.positional_encoding import PositionalEncoding
+from voltgan.models.soh_conditioning import SohConditioning
+from voltgan.models.transformer import BatteryTransformer

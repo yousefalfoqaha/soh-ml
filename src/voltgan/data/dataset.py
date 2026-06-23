@@ -63,10 +63,11 @@ class McusDataset(torch.utils.data.Dataset):
         u = torch.from_numpy(scaled_u).float()
         i = torch.from_numpy(scaled_i).float()
         t = torch.from_numpy(scaled_t).float()
+        ct = torch.from_numpy(scaled_ct).float()
 
-        condition_X = i.unsqueeze(1)
+        condition_X = torch.stack([i, ct], dim=1)
         init_condition = torch.tensor(
-            [scaled_u[0], scaled_t[0], scaled_ct[0], sample.soh], dtype=torch.float32
+            [scaled_u[0], scaled_t[0], sample.soh], dtype=torch.float32
         )
         target_y = torch.stack([u, t], dim=1)
 

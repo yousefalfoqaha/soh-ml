@@ -90,7 +90,7 @@ def main():
         input_size=5, num_layers=2, hidden_size=HIDDEN_SIZE, output_size=2
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    criterion = torch.nn.L1Loss()
+    criterion = torch.nn.HuberLoss()
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer,
         T_max=N_EPOCHS,
@@ -132,16 +132,16 @@ def train_and_validate(
 
         model.train()
 
-        for X_batch, init_cond, y_batch in train_loader:
-            X_batch, init_cond, y_batch = (
+        for X_batch, init_cond_batch, y_batch in train_loader:
+            X_batch, init_cond_batch, y_batch = (
                 X_batch.to(device),
-                init_cond.to(device),
+                init_cond_batch.to(device),
                 y_batch.to(device),
             )
 
             optimizer.zero_grad()
-            y_pred = model(X_batch, init_cond)
-            loss = criterion(y_pred, y_batch)
+            y_pred_batch = model(X_batch, init_cond_batch)
+            loss = criterion(y_pred_batch, y_batch)
 
             loss.backward()
             optimizer.step()
@@ -154,14 +154,14 @@ def train_and_validate(
 
         with torch.no_grad():
             plotted = False
-            for X_val, init_cond, y_val in valid_loader:
-                X_val, init_cond, y_val = (
+            for X_val, init_cond_batch, y_val in valid_loader:
+                X_val, init_cond_batch, y_val = (
                     X_val.to(device),
-                    init_cond.to(device),
+                    init_cond_batch.to(device),
                     y_val.to(device),
                 )
 
-                y_val_pred = model(X_val, init_cond)
+                y_val_pred = model(X_val, init_cond_batch)
                 val_loss = criterion(y_val_pred, y_val)
 
                 total_valid_loss += val_loss.item()
