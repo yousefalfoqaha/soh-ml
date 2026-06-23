@@ -11,7 +11,9 @@ class PositionalEncoding(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, sequence):
-        window_length = sequence.size(1)
-        bias = self.time_step_embeddings[:window_length]
+        sequence_length = sequence.size(1)
+        # (sequence_length, embed_dim)
+        bias = self.time_step_embeddings[:sequence_length]
 
+        # (B, sequence_length, embed_dim)
         return self.dropout(sequence + bias)

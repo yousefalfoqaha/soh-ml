@@ -8,6 +8,7 @@ class SohConditioning(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, sequence, soh):
+        # (B, 1, embed_dim)
         bias = self.soh_embedding(soh).unsqueeze(1)
 
         return self.dropout(sequence + bias)
