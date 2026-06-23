@@ -11,7 +11,7 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 from voltgan.data import McusDataset, Standardizer
-from voltgan.models import LstmModel
+from voltgan.models import BatteryEncoderTransformer
 from voltgan.pipeline import HdfConvertHandler, Pipeline
 from voltgan.pipeline.soh import Mf4SohHandler
 from voltgan.pipeline.stats_enricher import StatsEnrichHandler
@@ -31,9 +31,13 @@ PLOT_EPOCHS = {1, 10, 20, 30}
 N_EPOCHS = 50
 BATCH_SIZE = 64
 LEARNING_RATE = 0.0025
-HIDDEN_SIZE = 128
 WINDOW_LENGTH = 5000
 STRIDE = 1000
+
+EMBED_DIM = 64
+N_HEADS = 4
+FEEDFORWARD_DIM = 256
+DROPOUT = 0.1
 
 
 def main():
@@ -86,9 +90,14 @@ def main():
         pin_memory=True,
     )
 
-    model = LstmModel(
-        input_size=5, num_layers=2, hidden_size=HIDDEN_SIZE, output_size=2
+    model = BatteryEncoderTransformer(
+        embed_dim=EMBED_DIM,
+        n_heads=N_HEADS,
+        window_length=WINDOW_LENGTH,
+        feedforward_dim=FEEDFORWARD_DIM,
+        dropout=DROPOUT,
     ).to(device)
+
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     criterion = torch.nn.HuberLoss()
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
