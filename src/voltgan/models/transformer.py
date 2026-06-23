@@ -14,7 +14,8 @@ class BatteryEncoderTransformer(nn.Module):
         dropout: float = 0.1,
     ):
         super().__init__()
-        self.signal_embedding = nn.Linear(2, embed_dim)
+        self.input_signal_embedding = nn.Linear(2, embed_dim)
+        self.initial_state_embedding = nn.Linear(2, embed_dim)
 
         self.pos_encoding = PositionalEncoding(window_length + 1, embed_dim, dropout)
         self.soh_conditioning = SohConditioning(embed_dim, dropout)
@@ -39,14 +40,14 @@ class BatteryEncoderTransformer(nn.Module):
 
     def forward(self, X, initial_conditions):
         # (B, 2)
-        initial_voltage_temp = initial_conditions[:, 0:2]
+        initial_state = initial_conditions[:, 0:2]
         # (B, 2)
         soh = initial_conditions[:, 2:3]
 
         # (B, 1, embed_dim)
-        boundary_token = self.signal_embedding(initial_voltage_temp).unsqueeze(1)
+        boundary_token = self.initial_state_embedding(initial_state).unsqueeze(1)
         # (B, window_length, embed_dim)
-        sequence_embeddings = self.signal_embedding(X)
+        sequence_embeddings = self.input_signal_embedding(X)
 
         # (B, window_length + 1, embed_dim)
         combined_sequence = torch.cat([boundary_token, sequence_embeddings], dim=1)
