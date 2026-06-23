@@ -11,4 +11,5 @@ class SohConditioning(nn.Module):
         # (B, 1, embed_dim)
         bias = self.soh_embedding(soh).unsqueeze(1)
 
+        # (B, window_length, embed_dim)
         return self.dropout(sequence + bias)
