@@ -69,7 +69,7 @@ def _worker_init(worker_id):
 
 _PIPELINE_HANDLERS = [
     ChannelValidationHandler(CHANNELS),
-    SohHandler(qnom=18000.0, raster=RASTER_FREQUENCY),
+    SohHandler(nominal_charge=18000.0, raster=RASTER_FREQUENCY),
     HdfConvertHandler(DATA_PATH, RASTER_FREQUENCY, CHANNELS),
     StatsEnrichHandler(),
 ]

@@ -1,7 +1,8 @@
 import numpy as np
 from asammdf import MDF
 
-from voltgan.pipeline.soh_strategies.base import SohResult, SohStrategy
+from voltgan.pipeline.base import SampleContext
+from voltgan.pipeline.soh_strategies.base import SohStrategy
 from voltgan.pipeline.soh_strategies.utils import (
     _contiguous_regions,
     _rasterized_current,
@@ -19,12 +20,15 @@ class VoltageThresholdStrategy(SohStrategy):
     def can_handle(self, mdf: MDF) -> bool:
         return True
 
-    def calculate(self, mdf: MDF, nominal_charge: float, raster: float) -> SohResult:
+    def calculate(
+        self, mdf: MDF, nominal_charge: float, raster: float, context: SampleContext
+    ) -> SampleContext:
         voltage_signal = _rasterized_voltage(mdf, raster)
         current_signal = _rasterized_current(mdf, raster)
 
         if voltage_signal is None or current_signal is None:
-            return SohResult(soh_file=0.0, method="voltage_threshold_no_data")
+            context.interrupted = "No SoH is suitable"
+            return context
 
         voltage, _ = voltage_signal
         current, timestamps = current_signal
@@ -46,12 +50,13 @@ class VoltageThresholdStrategy(SohStrategy):
                 continue
             soh_values.append(soh)
 
-        soh_file = max(soh_values) if soh_values else 0.0
+        if soh_values == []:
+            context.interrupted = "No SoH is suitable"
+            return context
 
-        return SohResult(
-            soh_file=soh_file,
-            method="voltage_threshold",
-        )
+        context.metadata["soh_file"] = max(soh_values)
+
+        return context
 
     def _detect_discharge_cycles(self, voltage: np.ndarray) -> list[tuple[int, int]]:
         high_regions = _contiguous_regions(voltage >= self.V_HIGH_THRESHOLD)

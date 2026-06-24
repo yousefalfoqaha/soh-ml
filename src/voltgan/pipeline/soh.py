@@ -17,14 +17,14 @@ _STRATEGIES = [
 
 
 class SohHandler(PipelineHandler):
-    def __init__(self, qnom: float = 18000.0, raster: float = 0.1):
-        self.qnom = qnom
+    def __init__(self, nominal_charge: float = 18000.0, raster: float = 0.1):
+        self.nominal_charge = nominal_charge
         self.raster = raster
         self.strategies = _STRATEGIES
 
     @property
     def order(self) -> int:
-        return 2
+        return 1
 
     def handle(self, context: SampleContext) -> SampleContext:
         mf4_path = context.source_path
@@ -37,20 +37,20 @@ class SohHandler(PipelineHandler):
         try:
             for strategy in self.strategies:
                 if strategy.can_handle(mdf):
-                    result = strategy.calculate(mdf, self.qnom, self.raster)
-                    break
+                    context = strategy.calculate(
+                        mdf, self.nominal_charge, self.raster, context
+                    )
+
+                    if context.interrupted:
+                        return context
+
+                    print(
+                        f"  SoH [{strategy.__class__.__name__}]: soh_file={context.metadata['soh_file']:.3f}"
+                        + f" in {mf4_path.name}"
+                    )
+
             else:
-                context.interrupted = "No SoH strategy suitable"
+                context.interrupted = "No SoH strategy was picked"
                 return context
         finally:
             mdf.close()
-
-        context.metadata["soh_file"] = result.soh_file
-        context.metadata["soh_method"] = result.method
-
-        print(
-            f"  SoH [{result.method}]: soh_file={result.soh_file:.3f}"
-            + f" in {mf4_path.name}"
-        )
-
-        return context

@@ -17,7 +17,7 @@ class HdfConvertHandler(PipelineHandler):
 
     @property
     def order(self) -> int:
-        return 1
+        return 2
 
     def handle(self, context: SampleContext) -> SampleContext:
         mf4_path = context.source_path

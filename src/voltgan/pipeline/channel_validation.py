@@ -19,6 +19,9 @@ class ChannelValidationHandler(PipelineHandler):
         finally:
             mdf.close()
 
-        context.interrupted = f"Missing required channels in {mf4_path.name}: {missing}"
+        if missing:
+            context.interrupted = (
+                f"Missing required channels in {mf4_path.name}: {missing}"
+            )
 
         return context

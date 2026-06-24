@@ -16,8 +16,6 @@ class StatsEnrichHandler(PipelineHandler):
             return context
 
         with h5py.File(hdf_path, "a") as f:
-            f.attrs["stage"] = context.stage
-
             group = f[hdf_path.name]
             assert isinstance(group, h5py.Group)
 

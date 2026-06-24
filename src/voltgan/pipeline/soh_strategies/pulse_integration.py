@@ -1,7 +1,8 @@
 import numpy as np
 from asammdf import MDF
 
-from voltgan.pipeline.soh_strategies.base import SohResult, SohStrategy
+from voltgan.pipeline.base import SampleContext
+from voltgan.pipeline.soh_strategies.base import SohStrategy
 from voltgan.pipeline.soh_strategies.utils import _rasterized_current
 
 
@@ -12,17 +13,21 @@ class PulseIntegrationStrategy(SohStrategy):
             and "sgl_discharge_time_start" not in mdf.channels_db
         )
 
-    def calculate(self, mdf: MDF, nominal_charge: float, raster: float) -> SohResult:
+    def calculate(
+        self, mdf: MDF, nominal_charge: float, raster: float, context: SampleContext
+    ) -> SampleContext:
         try:
             pulse_signal = mdf.get("sgl_pulse")
         except Exception:
-            return SohResult(soh_file=0.0, method="pulse_integration_no_pulse")
+            context.interrupted = "Pulse integration no pulse"
+            return context
 
         result = _rasterized_current(mdf, raster)
         if result is None:
-            return SohResult(soh_file=0.0, method="pulse_integration_no_current")
-        current, timestamps = result
+            context.interrupted = "Pulse integration no current"
+            return context
 
+        current, timestamps = result
         pulse_timestamps = pulse_signal.timestamps
         pulse_samples = pulse_signal.samples
 
@@ -31,7 +36,8 @@ class PulseIntegrationStrategy(SohStrategy):
 
         n_pairs = min(len(start_indices), len(end_indices))
         if n_pairs == 0:
-            return SohResult(soh_file=0.0, method="pulse_integration_no_pairs")
+            context.interrupted = "Pulse integration no pairs"
+            return context
 
         total_discharge = 0.0
         for j in range(n_pairs):
@@ -41,8 +47,6 @@ class PulseIntegrationStrategy(SohStrategy):
             total_discharge += abs(float(np.trapezoid(current[mask], timestamps[mask])))
 
         soh_file = min(total_discharge / nominal_charge, 1.0)
+        context.metadata["soh_file"] = soh_file
 
-        return SohResult(
-            soh_file=soh_file,
-            method="pulse_integration",
-        )
+        return context

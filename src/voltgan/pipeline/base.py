@@ -8,7 +8,6 @@ from typing import Generator
 class SampleContext:
     source_path: Path
     output_path: Path | None = None
-    stage: str = "unknown"
     interrupted: str | None = None
     metadata: dict = field(default_factory=dict)
 
