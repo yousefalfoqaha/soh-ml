@@ -23,17 +23,6 @@ from voltgan.pipeline import HdfConvertHandler, Pipeline
 from voltgan.pipeline.soh import Mf4SohHandler
 from voltgan.pipeline.stats_enricher import StatsEnrichHandler
 
-_interrupted = False
-
-
-def _handle_sigint(sig, frame):
-    global _interrupted
-    print("\nInterrupt received, finishing current epoch...")
-    _interrupted = True
-
-
-signal.signal(signal.SIGINT, _handle_sigint)
-
 TRAINING_MCUS = ["mcu1"]
 VALIDATION_MCUS = ["mcu2"]
 TESTING_MCUS = ["mcu3"]
@@ -49,14 +38,29 @@ PLOT_EPOCHS = {1, 10, 20}
 N_EPOCHS = 20
 BATCH_SIZE = 32
 LEARNING_RATE = 0.0025
-WINDOW_LENGTH = 1000
-STRIDE = 1000
+WINDOW_LENGTH = 5000
+STRIDE = 5000
 
 EMBEDDING_DIM = 64
 FEEDFORWARD_DIM = 256
 N_HEADS = 4
-N_BLOCKS = 4
+N_BLOCKS = 2
 DROPOUT = 0.1
+
+_interrupted = False
+
+
+def _handle_sigint(sig, frame):
+    global _interrupted
+    print("\nInterrupt received, finishing current epoch...")
+    _interrupted = True
+
+
+signal.signal(signal.SIGINT, _handle_sigint)
+
+
+def _worker_init(worker_id):
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
 def main():
@@ -102,6 +106,7 @@ def main():
         num_workers=4,
         pin_memory=True,
         persistent_workers=True,
+        worker_init_fn=_worker_init,
     )
     validation_loader = DataLoader(
         validation_dataset,
@@ -110,6 +115,7 @@ def main():
         num_workers=4,
         pin_memory=True,
         persistent_workers=True,
+        worker_init_fn=_worker_init,
     )
 
     model = BatteryEncoderTransformer(
