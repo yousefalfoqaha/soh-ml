@@ -23,52 +23,56 @@ class McusDataset(torch.utils.data.Dataset):
 
         for hdf_path in discover(data_path, mcus, (".hdf",)):
             sample = McuSample(filepath=hdf_path)
-            sample_idx = len(self.samples)
+            sample_i = len(self.samples)
             self.samples.append(sample)
             n_windows = (sample.n_samples - window_length) // stride + 1
 
             for i in range(n_windows):
-                start_idx = i * stride
-                self.window_map.append((sample_idx, start_idx))
+                start_i = i * stride
+                self.window_map.append((sample_i, start_i))
 
         print(f"Mapped {len(self.window_map):,} windows from {len(mcus)} MCU(s).")
 
     def __len__(self):
         return len(self.window_map)
 
-    def __getitem__(self, idx):
-        if idx >= len(self):
+    def __getitem__(self, i):
+        if i >= len(self):
             raise IndexError("dataset index out of range")
 
-        sample_idx, start_idx = self.window_map[idx]
-        sample = self.samples[sample_idx]
-        end_idx = start_idx + self.window_length
+        sample_i, start_i = self.window_map[i]
+        sample = self.samples[sample_i]
+        end_i = start_i + self.window_length
 
-        window = sample.load_window(start_idx, end_idx)
+        window = sample.load_window(start_i, end_i)
 
-        raw_u = window[0, :]
-        raw_i = window[1, :]
-        raw_t = window[2, :]
-        raw_ct = window[3, :]
-
-        scaled_u = (raw_u - self.stats["U"]["mean"]) / self.stats["U"]["std"]
-        scaled_i = (raw_i - self.stats["I"]["mean"]) / self.stats["I"]["std"]
-        scaled_t = (raw_t - self.stats["Temp[1]"]["mean"]) / self.stats["Temp[1]"][
+        voltage_scaled = (window[0, :] - self.stats["U"]["mean"]) / self.stats["U"][
             "std"
         ]
-        scaled_ct = (raw_ct - self.stats["ClimaTemp"]["mean"]) / self.stats[
-            "ClimaTemp"
-        ]["std"]
+        current_scaled = (window[1, :] - self.stats["I"]["mean"]) / self.stats["I"][
+            "std"
+        ]
+        temperature_scaled = (
+            window[2, :] - self.stats["Temp[1]"]["mean"]
+        ) / self.stats["Temp[1]"]["std"]
+        ambient_temperature_scaled = (
+            window[3, :] - self.stats["ClimaTemp"]["mean"]
+        ) / self.stats["ClimaTemp"]["std"]
 
-        u = torch.from_numpy(scaled_u).float()
-        i = torch.from_numpy(scaled_i).float()
-        t = torch.from_numpy(scaled_t).float()
-        ct = torch.from_numpy(scaled_ct).float()
+        voltage = torch.from_numpy(voltage_scaled).float()
+        current = torch.from_numpy(current_scaled).float()
+        temperature = torch.from_numpy(temperature_scaled).float()
+        ambient_temperature = torch.from_numpy(ambient_temperature_scaled).float()
 
-        condition_X = torch.stack([i, ct], dim=1)
-        init_condition = torch.tensor(
-            [scaled_u[0], scaled_t[0], sample.soh], dtype=torch.float32
+        # (window_length, 2)
+        X = torch.stack([current, ambient_temperature], dim=1)
+
+        # (3,)
+        initial_conditions = torch.tensor(
+            [voltage_scaled[0], temperature_scaled[0], sample.soh], dtype=torch.float32
         )
-        target_y = torch.stack([u, t], dim=1)
 
-        return condition_X, init_condition, target_y
+        # (window_length, 2)
+        y = torch.stack([voltage, temperature], dim=1)
+
+        return X, initial_conditions, y

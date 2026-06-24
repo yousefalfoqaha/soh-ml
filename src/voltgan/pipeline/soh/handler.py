@@ -25,13 +25,13 @@ class Mf4SohHandler(PipelineHandler):
     def order(self) -> int:
         return 0
 
-    def handle(self, ctx: SampleContext) -> SampleContext:
-        mf4_path = ctx.source_path
+    def handle(self, context: SampleContext) -> SampleContext:
+        mf4_path = context.source_path
         try:
             mdf = MDF(name=mf4_path)
         except Exception:
-            ctx.interrupted = f"cannot open mf4: {mf4_path}"
-            return ctx
+            context.interrupted = f"cannot open mf4: {mf4_path}"
+            return context
 
         try:
             for strategy in self.strategies:
@@ -43,12 +43,12 @@ class Mf4SohHandler(PipelineHandler):
         finally:
             mdf.close()
 
-        ctx.metadata["soh_file"] = result.soh_file
-        ctx.metadata["soh_method"] = result.method
+        context.metadata["soh_file"] = result.soh_file
+        context.metadata["soh_method"] = result.method
 
         print(
             f"  SoH [{result.method}]: soh_file={result.soh_file:.3f}"
             + f" in {mf4_path.name}"
         )
 
-        return ctx
+        return context

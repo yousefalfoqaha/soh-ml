@@ -10,9 +10,9 @@ class McuSample:
         self.filepath = filepath
 
         with h5py.File(filepath, "r") as f:
-            grp = f[filepath.name]
-            assert isinstance(grp, h5py.Group)
-            signal = grp["U"]
+            group = f[filepath.name]
+            assert isinstance(group, h5py.Group)
+            signal = group["U"]
             assert isinstance(signal, h5py.Dataset)
 
             self.type = filepath.parts[4]
@@ -26,13 +26,12 @@ class McuSample:
 
     def load_window(self, start: int, end: int) -> np.ndarray:
         with h5py.File(self.filepath, "r") as f:
-            grp = f[self.filepath.name]
-            assert isinstance(grp, h5py.Group)
+            group = f[self.filepath.name]
+            assert isinstance(group, h5py.Group)
 
-            u = cast(h5py.Dataset, grp["U"])[start:end]
-            i = cast(h5py.Dataset, grp["I"])[start:end]
-            t = cast(h5py.Dataset, grp["Temp[1]"])[start:end]
-            ct = cast(h5py.Dataset, grp["ClimaTemp"])[start:end]
+            voltage = cast(h5py.Dataset, group["U"])[start:end]
+            current = cast(h5py.Dataset, group["I"])[start:end]
+            temperature = cast(h5py.Dataset, group["Temp[1]"])[start:end]
+            ambient_temperature = cast(h5py.Dataset, group["ClimaTemp"])[start:end]
 
-            return np.stack([u, i, t, ct])
-
+            return np.stack([voltage, current, temperature, ambient_temperature])

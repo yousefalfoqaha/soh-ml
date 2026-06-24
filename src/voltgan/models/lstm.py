@@ -3,16 +3,16 @@ from torch import nn
 
 
 class LstmModel(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, output_size):
+    def __init__(self, input_size, hidden_size, n_layers, output_size):
         super().__init__()
 
-        self.num_layers = num_layers
+        self.n_layers = n_layers
         self.hidden_size = hidden_size
 
         self.lstm = nn.LSTM(
             input_size=input_size,
             hidden_size=hidden_size,
-            num_layers=num_layers,
+            num_layers=n_layers,
             batch_first=True,
         )
 
@@ -22,16 +22,18 @@ class LstmModel(nn.Module):
             nn.Linear(hidden_size // 2, output_size),
         )
 
-    def forward(self, X, init_cond):
+    def forward(self, X, initial_conditions):
         _, seq_len, _ = X.shape
 
-        init_cond_expanded = init_cond.unsqueeze(1).expand(-1, seq_len, -1)
+        initial_conditions_expanded = initial_conditions.unsqueeze(1).expand(
+            -1, seq_len, -1
+        )
 
-        lstm_input = torch.cat([X, init_cond_expanded], dim=-1)
+        lstm_input = torch.cat([X, initial_conditions_expanded], dim=-1)
 
         lstm_outputs, _ = self.lstm(lstm_input)
         deltas = self.output(lstm_outputs)
 
-        base_u_t = init_cond[:, :2].unsqueeze(1)
+        base_voltage_temperature = initial_conditions[:, :2].unsqueeze(1)
 
-        return base_u_t + deltas
+        return base_voltage_temperature + deltas

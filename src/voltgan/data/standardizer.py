@@ -18,20 +18,20 @@ class Standardizer:
 
         for hdf_path in discover(self.data_path, mcus, (".hdf",)):
             with h5py.File(hdf_path, "r") as f:
-                n = int(f.attrs.get("total_rows", 0))
-                if n == 0:
+                n_rows = int(f.attrs.get("total_rows", 0))
+                if n_rows == 0:
                     continue
-                total_rows += n
+                total_rows += n_rows
 
-                grp = f[hdf_path.name]
-                assert isinstance(grp, h5py.Group)
+                group = f[hdf_path.name]
+                assert isinstance(group, h5py.Group)
 
-                for key in grp.keys():
+                for key in group.keys():
                     if key.startswith("soh_"):
                         continue
 
-                    ds = grp[key]
-                    if not isinstance(ds, h5py.Dataset):
+                    dataset = group[key]
+                    if not isinstance(dataset, h5py.Dataset):
                         continue
 
                     mean = float(f.attrs.get(f"{key}_mean", 0.0))
@@ -40,9 +40,9 @@ class Standardizer:
                     if key not in channel_stats:
                         channel_stats[key] = {"sum": 0.0, "m2_sum": 0.0, "sum_sq": 0.0}
 
-                    channel_stats[key]["sum"] += mean * n
+                    channel_stats[key]["sum"] += mean * n_rows
                     channel_stats[key]["m2_sum"] += m2
-                    channel_stats[key]["sum_sq"] += mean * mean * n
+                    channel_stats[key]["sum_sq"] += mean * mean * n_rows
 
         if total_rows == 0:
             raise ValueError("No data points found.")
@@ -50,11 +50,11 @@ class Standardizer:
         result: dict[str, dict[str, float]] = {}
         for channel, stats in channel_stats.items():
             mean = stats["sum"] / total_rows
-            var = (
+            variance = (
                 stats["m2_sum"] + stats["sum_sq"] - total_rows * mean * mean
             ) / total_rows
-            std = float(np.sqrt(max(var, 1e-8)))
-            result[channel] = {"mean": float(mean), "std": std}
+            standard_deviation = float(np.sqrt(max(variance, 1e-8)))
+            result[channel] = {"mean": float(mean), "std": standard_deviation}
 
         self._print_stats(result, total_rows)
         return result
@@ -64,4 +64,3 @@ class Standardizer:
         print(f"  Total time steps: {total_rows:,}")
         for channel, s in stats.items():
             print(f"  {channel:12s} -> Mean: {s['mean']:10.4f} | Std: {s['std']:10.4f}")
-

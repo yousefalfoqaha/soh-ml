@@ -7,8 +7,8 @@ def _safe_get_channel(mdf: MDF, name: str) -> np.ndarray | None:
     if name not in channels:
         return None
     try:
-        sig = mdf.get(name)
-        return sig.samples
+        signal = mdf.get(name)
+        return signal.samples
     except Exception:
         return None
 
@@ -17,8 +17,8 @@ def _rasterized_current(
     mdf: MDF, raster: float
 ) -> tuple[np.ndarray, np.ndarray] | None:
     try:
-        sig = mdf.get("I", raster=raster)
-        return sig.samples.astype(np.float64), sig.timestamps.astype(np.float64)
+        signal = mdf.get("I", raster=raster)
+        return signal.samples.astype(np.float64), signal.timestamps.astype(np.float64)
     except Exception:
         return None
 
@@ -27,8 +27,8 @@ def _rasterized_voltage(
     mdf: MDF, raster: float
 ) -> tuple[np.ndarray, np.ndarray] | None:
     try:
-        sig = mdf.get("U", raster=raster)
-        return sig.samples.astype(np.float64), sig.timestamps.astype(np.float64)
+        signal = mdf.get("U", raster=raster)
+        return signal.samples.astype(np.float64), signal.timestamps.astype(np.float64)
     except Exception:
         return None
 
@@ -38,11 +38,11 @@ def _merge_intervals(
 ) -> list[tuple[float, float]]:
     intervals = sorted(zip(starts, ends), key=lambda x: x[0])
     merged: list[tuple[float, float]] = []
-    for s, e in intervals:
-        if merged and s - merged[-1][1] <= gap:
-            merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+    for start, end in intervals:
+        if merged and start - merged[-1][1] <= gap:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
         else:
-            merged.append((float(s), float(e)))
+            merged.append((float(start), float(end)))
     return merged
 
 
@@ -60,3 +60,4 @@ def _contiguous_regions(mask: np.ndarray) -> list[tuple[int, int]]:
     if start is not None:
         regions.append((start, len(mask)))
     return regions
+

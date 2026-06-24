@@ -19,21 +19,21 @@ class VoltageThresholdStrategy(SohStrategy):
     def can_handle(self, mdf: MDF) -> bool:
         return True
 
-    def calculate(self, mdf: MDF, qnom: float, raster: float) -> SohResult:
-        result_v = _rasterized_voltage(mdf, raster)
-        result_i = _rasterized_current(mdf, raster)
+    def calculate(self, mdf: MDF, nominal_charge: float, raster: float) -> SohResult:
+        voltage_signal = _rasterized_voltage(mdf, raster)
+        current_signal = _rasterized_current(mdf, raster)
 
-        if result_v is None or result_i is None:
+        if voltage_signal is None or current_signal is None:
             return SohResult(soh_file=0.0, method="voltage_threshold_no_data")
 
-        voltage, _ = result_v
-        current, timestamps = result_i
+        voltage, _ = voltage_signal
+        current, timestamps = current_signal
 
-        pairs = self._detect_discharge_cycles(voltage)
+        discharge_start_end_pairs = self._detect_discharge_cycles(voltage)
 
         soh_values = []
 
-        for peak_idx, trough_idx in pairs:
+        for peak_idx, trough_idx in discharge_start_end_pairs:
             duration = timestamps[trough_idx] - timestamps[peak_idx]
             if duration < self.MIN_CYCLE_DURATION_SECONDS:
                 continue
@@ -41,7 +41,7 @@ class VoltageThresholdStrategy(SohStrategy):
             segment_current = current[peak_idx : trough_idx + 1]
             segment_time = timestamps[peak_idx : trough_idx + 1]
             integrated_charge = abs(float(np.trapezoid(segment_current, segment_time)))
-            soh = integrated_charge / qnom
+            soh = integrated_charge / nominal_charge
             if soh < self.MIN_SOH:
                 continue
             soh_values.append(soh)
@@ -59,31 +59,32 @@ class VoltageThresholdStrategy(SohStrategy):
 
         maxima: list[tuple[int, float]] = []
         for start, end in high_regions:
-            idx = start + int(np.argmax(voltage[start:end]))
-            maxima.append((idx, float(voltage[idx])))
+            i = start + int(np.argmax(voltage[start:end]))
+            maxima.append((i, float(voltage[i])))
 
         minima: list[tuple[int, float]] = []
         for start, end in low_regions:
-            idx = start + int(np.argmin(voltage[start:end]))
-            minima.append((idx, float(voltage[idx])))
+            i = start + int(np.argmin(voltage[start:end]))
+            minima.append((i, float(voltage[i])))
 
         events = sorted(maxima + minima, key=lambda e: e[0])
 
         pairs: list[tuple[int, int]] = []
-        current_peak_idx = None
-        current_peak_val = -np.inf
+        current_peak_i = None
+        current_peak_value = -np.inf
 
-        for idx, val in events:
+        for i, val in events:
             if val >= self.V_HIGH_THRESHOLD:
-                if val > current_peak_val:
-                    current_peak_idx = idx
-                    current_peak_val = val
+                if val > current_peak_value:
+                    current_peak_i = i
+                    current_peak_value = val
             else:
-                if current_peak_idx is not None:
-                    delta = current_peak_val - val
+                if current_peak_i is not None:
+                    delta = current_peak_value - val
                     if delta >= self.MIN_CYCLE_VOLTAGE_DELTA:
-                        pairs.append((current_peak_idx, idx))
-                        current_peak_idx = None
-                        current_peak_val = -np.inf
+                        pairs.append((current_peak_i, i))
+                        current_peak_i = None
+                        current_peak_value = -np.inf
 
         return pairs
+

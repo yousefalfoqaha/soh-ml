@@ -20,8 +20,8 @@ class HdfConvertHandler(PipelineHandler):
     def order(self) -> int:
         return 1
 
-    def handle(self, ctx: SampleContext) -> SampleContext:
-        mf4_path = ctx.source_path
+    def handle(self, context: SampleContext) -> SampleContext:
+        mf4_path = context.source_path
         relative_path = mf4_path.relative_to(self.mf4_root)
         hdf_path = (self.hdf_root / relative_path).with_suffix(".hdf")
 
@@ -31,10 +31,10 @@ class HdfConvertHandler(PipelineHandler):
             except IndexError:
                 dataset_stage = "unknown"
 
-            ctx.output_path = hdf_path
-            ctx.stage = dataset_stage
-            self._write_soh_metadata(hdf_path, ctx)
-            return ctx
+            context.output_path = hdf_path
+            context.stage = dataset_stage
+            self._write_soh_metadata(hdf_path, context)
+            return context
 
         hdf_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -59,11 +59,11 @@ class HdfConvertHandler(PipelineHandler):
         finally:
             mdf.close()
 
-        ctx.output_path = hdf_path
-        ctx.stage = dataset_stage
-        self._write_soh_metadata(hdf_path, ctx)
+        context.output_path = hdf_path
+        context.stage = dataset_stage
+        self._write_soh_metadata(hdf_path, context)
         print(f"Finished converting: {hdf_path.name}")
-        return ctx
+        return context
 
     def _write_soh_metadata(self, hdf_path: Path, ctx: SampleContext) -> None:
         if "soh_file" not in ctx.metadata:
@@ -79,4 +79,3 @@ class HdfConvertHandler(PipelineHandler):
                 del f["soh_timestamps"]
             f.attrs["soh_file"] = soh_file
             f.attrs["soh_method"] = soh_method
-

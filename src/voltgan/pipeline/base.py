@@ -19,7 +19,7 @@ class PipelineHandler(ABC):
     def order(self) -> int: ...
 
     @abstractmethod
-    def handle(self, ctx: SampleContext) -> SampleContext: ...
+    def handle(self, context: SampleContext) -> SampleContext: ...
 
 
 def discover(
@@ -44,12 +44,12 @@ class Pipeline:
     def run(self, mcus: list[str]):
         mf4_root = self.data_path / "mf4"
         for mf4_path in discover(mf4_root, mcus, (".mf4", ".dat")):
-            ctx = SampleContext(source_path=mf4_path)
+            context = SampleContext(source_path=mf4_path)
 
             for handler in self.handlers:
-                ctx = handler.handle(ctx)
-                if ctx.interrupted:
+                context = handler.handle(context)
+                if context.interrupted:
                     print(
-                        f"[{handler.__class__.__name__}] Interrupted: {ctx.interrupted}"
+                        f"[{handler.__class__.__name__}] Interrupted: {context.interrupted}"
                     )
                     break

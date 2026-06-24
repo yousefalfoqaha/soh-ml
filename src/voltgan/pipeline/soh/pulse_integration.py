@@ -12,9 +12,9 @@ class PulseIntegrationStrategy(SohStrategy):
             and "sgl_discharge_time_start" not in mdf.channels_db
         )
 
-    def calculate(self, mdf: MDF, qnom: float, raster: float) -> SohResult:
+    def calculate(self, mdf: MDF, nominal_charge: float, raster: float) -> SohResult:
         try:
-            sig_pulse = mdf.get("sgl_pulse")
+            pulse_signal = mdf.get("sgl_pulse")
         except Exception:
             return SohResult(soh_file=0.0, method="pulse_integration_no_pulse")
 
@@ -23,11 +23,11 @@ class PulseIntegrationStrategy(SohStrategy):
             return SohResult(soh_file=0.0, method="pulse_integration_no_current")
         current, timestamps = result
 
-        pulse_ts = sig_pulse.timestamps
-        pulse_vals = sig_pulse.samples
+        pulse_timestamps = pulse_signal.timestamps
+        pulse_samples = pulse_signal.samples
 
-        start_indices = pulse_ts[pulse_vals == 1.0]
-        end_indices = pulse_ts[pulse_vals == 2.0]
+        start_indices = pulse_timestamps[pulse_samples == 1.0]
+        end_indices = pulse_timestamps[pulse_samples == 2.0]
 
         n_pairs = min(len(start_indices), len(end_indices))
         if n_pairs == 0:
@@ -40,9 +40,10 @@ class PulseIntegrationStrategy(SohStrategy):
                 continue
             total_discharge += abs(float(np.trapezoid(current[mask], timestamps[mask])))
 
-        soh_file = min(total_discharge / qnom, 1.0)
+        soh_file = min(total_discharge / nominal_charge, 1.0)
 
         return SohResult(
             soh_file=soh_file,
             method="pulse_integration",
         )
+

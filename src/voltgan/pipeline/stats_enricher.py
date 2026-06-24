@@ -9,30 +9,29 @@ class StatsEnrichHandler(PipelineHandler):
     def order(self) -> int:
         return 2
 
-    def handle(self, ctx: SampleContext) -> SampleContext:
-        hdf_path = ctx.output_path
+    def handle(self, context: SampleContext) -> SampleContext:
+        hdf_path = context.output_path
         if hdf_path is None:
-            ctx.interrupted = "no output path"
-            return ctx
+            context.interrupted = "no output path"
+            return context
 
         with h5py.File(hdf_path, "a") as f:
-            f.attrs["stage"] = ctx.stage
+            f.attrs["stage"] = context.stage
 
-            grp = f[hdf_path.name]
-            assert isinstance(grp, h5py.Group)
+            group = f[hdf_path.name]
+            assert isinstance(group, h5py.Group)
 
             total_rows = None
-            for channel in grp.keys():
-                ds = grp[channel]
-                assert isinstance(ds, h5py.Dataset)
+            for channel in group.keys():
+                dataset = group[channel]
+                assert isinstance(dataset, h5py.Dataset)
                 if total_rows is None:
-                    total_rows = len(ds)
-                data = ds[:]
+                    total_rows = len(dataset)
+                data = dataset[:]
                 f.attrs[f"{channel}_mean"] = float(np.mean(data))
                 f.attrs[f"{channel}_m2"] = float(np.var(data) * total_rows)
 
             f.attrs["total_rows"] = total_rows
 
         print(f"  Stats enriched: {hdf_path.name}")
-        return ctx
-
+        return context

@@ -15,5 +15,5 @@ class PositionalEncoding(nn.Module):
         # (sequence_length, embed_dim)
         bias = self.time_step_embeddings[:sequence_length]
 
-        # (B, sequence_length, embed_dim)
+        # (batch_size, sequence_length, embed_dim)
         return self.dropout(sequence + bias)

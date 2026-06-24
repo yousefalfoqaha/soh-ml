@@ -12,7 +12,7 @@ class SOHCStrategy(SohStrategy):
             and "sgl_pulse" not in mdf.channels_db
         )
 
-    def calculate(self, mdf: MDF, qnom: float, raster: float) -> SohResult:
+    def calculate(self, mdf: MDF, charge_nominal: float, raster: float) -> SohResult:
         sohc = _safe_get_channel(mdf, "sgl_SOHC")
         if sohc is None or len(sohc) == 0:
             return SohResult(soh_file=0.0, method="sohc_empty")
@@ -23,4 +23,3 @@ class SOHCStrategy(SohStrategy):
             soh_file=soh_file,
             method="sohc",
         )
-
