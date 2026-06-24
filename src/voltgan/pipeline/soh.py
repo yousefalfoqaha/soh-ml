@@ -1,10 +1,12 @@
 from asammdf import MDF
 
 from voltgan.pipeline.base import PipelineHandler, SampleContext
-from voltgan.pipeline.soh.discharge_time import DischargeTimeMergeStrategy
-from voltgan.pipeline.soh.pulse_integration import PulseIntegrationStrategy
-from voltgan.pipeline.soh.sohc import SOHCStrategy
-from voltgan.pipeline.soh.voltage_threshold import VoltageThresholdStrategy
+from voltgan.pipeline.soh_strategies import (
+    DischargeTimeMergeStrategy,
+    PulseIntegrationStrategy,
+    SOHCStrategy,
+    VoltageThresholdStrategy,
+)
 
 _STRATEGIES = [
     DischargeTimeMergeStrategy(),
@@ -14,7 +16,7 @@ _STRATEGIES = [
 ]
 
 
-class Mf4SohHandler(PipelineHandler):
+class SohHandler(PipelineHandler):
     def __init__(self, qnom: float = 18000.0, raster: float = 0.1):
         self.qnom = qnom
         self.raster = raster

@@ -22,8 +22,8 @@ from voltgan.models import BatteryEncoderTransformer
 from voltgan.pipeline import (
     ChannelValidationHandler,
     HdfConvertHandler,
-    Mf4SohHandler,
     Pipeline,
+    SohHandler,
     StatsEnrichHandler,
 )
 
@@ -69,7 +69,7 @@ def _worker_init(worker_id):
 
 _PIPELINE_HANDLERS = [
     ChannelValidationHandler(CHANNELS),
-    Mf4SohHandler(qnom=18000.0, raster=RASTER_FREQUENCY),
+    SohHandler(qnom=18000.0, raster=RASTER_FREQUENCY),
     HdfConvertHandler(DATA_PATH, RASTER_FREQUENCY, CHANNELS),
     StatsEnrichHandler(),
 ]

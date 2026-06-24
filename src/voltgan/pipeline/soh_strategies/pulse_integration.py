@@ -1,8 +1,8 @@
 import numpy as np
 from asammdf import MDF
 
-from voltgan.pipeline.soh.base import SohResult, SohStrategy
-from voltgan.pipeline.soh.utils import _rasterized_current
+from voltgan.pipeline.soh_strategies.base import SohResult, SohStrategy
+from voltgan.pipeline.soh_strategies.utils import _rasterized_current
 
 
 class PulseIntegrationStrategy(SohStrategy):
@@ -46,4 +46,3 @@ class PulseIntegrationStrategy(SohStrategy):
             soh_file=soh_file,
             method="pulse_integration",
         )
-

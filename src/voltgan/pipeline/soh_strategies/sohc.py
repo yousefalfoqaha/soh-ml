@@ -1,7 +1,7 @@
 from asammdf import MDF
 
-from voltgan.pipeline.soh.base import SohResult, SohStrategy
-from voltgan.pipeline.soh.utils import _safe_get_channel
+from voltgan.pipeline.soh_strategies.base import SohResult, SohStrategy
+from voltgan.pipeline.soh_strategies.utils import _safe_get_channel
 
 
 class SOHCStrategy(SohStrategy):
@@ -12,7 +12,7 @@ class SOHCStrategy(SohStrategy):
             and "sgl_pulse" not in mdf.channels_db
         )
 
-    def calculate(self, mdf: MDF, charge_nominal: float, raster: float) -> SohResult:
+    def calculate(self, mdf: MDF, nominal_charge: float, raster: float) -> SohResult:
         sohc = _safe_get_channel(mdf, "sgl_SOHC")
         if sohc is None or len(sohc) == 0:
             return SohResult(soh_file=0.0, method="sohc_empty")

@@ -1,8 +1,8 @@
 import numpy as np
 from asammdf import MDF
 
-from voltgan.pipeline.soh.base import SohResult, SohStrategy
-from voltgan.pipeline.soh.utils import (
+from voltgan.pipeline.soh_strategies.base import SohResult, SohStrategy
+from voltgan.pipeline.soh_strategies.utils import (
     _merge_intervals,
     _rasterized_current,
     _safe_get_channel,
@@ -49,4 +49,3 @@ class DischargeTimeMergeStrategy(SohStrategy):
             soh_file=soh_file,
             method="discharge_time_merge",
         )
-
