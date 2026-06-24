@@ -33,9 +33,12 @@ class EncoderBlock(nn.Module):
             value=pre_attention_embeddings,
             need_weights=False,
         )
-        pre_feedforward_embeddings = self.post_attention_norm(embeddings + attention)
+        embeddings = embeddings + attention
 
-        return embeddings + self.feedforward(pre_feedforward_embeddings)
+        pre_feedforward_embeddings = self.post_attention_norm(embeddings)
+        embeddings = embeddings + self.feedforward(pre_feedforward_embeddings)
+
+        return embeddings
 
 
 class BatteryEncoderTransformer(nn.Module):
