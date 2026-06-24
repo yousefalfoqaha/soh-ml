@@ -224,7 +224,6 @@ def train_and_validate(
         )
 
         if _interrupted:
-            print("Training interrupted by user.")
             break
 
 
@@ -238,16 +237,25 @@ def plot_battery_comparison(
     y_true_denorm[:, 0] = y_true[:, 0] * u_stats["standard_deviation"] + u_stats["mean"]
     y_true_denorm[:, 1] = y_true[:, 1] * t_stats["standard_deviation"] + t_stats["mean"]
 
-    y_pred_denorm = y_pred.copy()
-    y_pred_denorm[:, 0] = y_pred[:, 0] * u_stats["standard_deviation"] + u_stats["mean"]
-    y_pred_denorm[:, 1] = y_pred[:, 1] * t_stats["standard_deviation"] + t_stats["mean"]
+    y_prediction_denorm = y_pred.copy()
+    y_prediction_denorm[:, 0] = (
+        y_pred[:, 0] * u_stats["standard_deviation"] + u_stats["mean"]
+    )
+    y_prediction_denorm[:, 1] = (
+        y_pred[:, 1] * t_stats["standard_deviation"] + t_stats["mean"]
+    )
 
     fig, axs = plt.subplots(1, 2, figsize=(12, 5), layout="constrained")
-    t = np.arange(y_true.shape[0])
+    timestamps = np.arange(y_true.shape[0])
 
-    axs[0].plot(t, y_true_denorm[:, 0], color="black", label="True U")
+    axs[0].plot(timestamps, y_true_denorm[:, 0], color="black", label="True U")
     axs[0].plot(
-        t, y_pred_denorm[:, 0], color="red", linestyle="--", label="Pred U", alpha=0.8
+        timestamps,
+        y_prediction_denorm[:, 0],
+        color="red",
+        linestyle="--",
+        label="Pred U",
+        alpha=0.8,
     )
     axs[0].set_title("Voltage Comparison")
     axs[0].set_ylabel("Voltage (V)")
@@ -255,10 +263,10 @@ def plot_battery_comparison(
     axs[0].grid(True, alpha=0.3)
     axs[0].legend()
 
-    axs[1].plot(t, y_true_denorm[:, 1], color="darkred", label="True Temp")
+    axs[1].plot(timestamps, y_true_denorm[:, 1], color="darkred", label="True Temp")
     axs[1].plot(
-        t,
-        y_pred_denorm[:, 1],
+        timestamps,
+        y_prediction_denorm[:, 1],
         color="blue",
         linestyle="--",
         label="Pred Temp",
