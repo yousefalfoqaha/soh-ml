@@ -10,6 +10,8 @@ import torch
 import torch._inductor.config as inductor_config
 
 inductor_config.max_autotune_gemm = False
+import signal
+
 from torch.amp import GradScaler, autocast
 from torch.nn import Module
 from torch.optim import Optimizer
@@ -20,6 +22,17 @@ from voltgan.models import BatteryEncoderTransformer
 from voltgan.pipeline import HdfConvertHandler, Pipeline
 from voltgan.pipeline.soh import Mf4SohHandler
 from voltgan.pipeline.stats_enricher import StatsEnrichHandler
+
+_interrupted = False
+
+
+def _handle_sigint(sig, frame):
+    global _interrupted
+    print("\nInterrupt received, finishing current epoch...")
+    _interrupted = True
+
+
+signal.signal(signal.SIGINT, _handle_sigint)
 
 TRAINING_MCUS = ["mcu1"]
 VALIDATION_MCUS = ["mcu2"]
@@ -36,13 +49,13 @@ PLOT_EPOCHS = {1, 10, 20}
 N_EPOCHS = 20
 BATCH_SIZE = 32
 LEARNING_RATE = 0.0025
-WINDOW_LENGTH = 2000
-STRIDE = 2000
+WINDOW_LENGTH = 1000
+STRIDE = 1000
 
 EMBEDDING_DIM = 64
-FEEDFORWARD_DIM = 128
-N_HEADS = 2
-N_BLOCKS = 2
+FEEDFORWARD_DIM = 256
+N_HEADS = 4
+N_BLOCKS = 4
 DROPOUT = 0.1
 
 
@@ -144,10 +157,10 @@ def train_and_validate(
     device: str,
     stats: dict,
 ) -> None:
-    print(f"Starting training for {n_epochs} epochs on {device}...")
     print(
         f"Train batches: {len(training_loader)} | Validation batches: {len(validation_loader)}"
     )
+    print(f"Starting training for {n_epochs} epochs...")
 
     for epoch in range(n_epochs):
         total_training_loss = 0.0
@@ -203,6 +216,10 @@ def train_and_validate(
             f"Train Loss: {mean_training_loss:.5f} | "
             f"Valid Loss: {mean_validation_loss:.5f}"
         )
+
+        if _interrupted:
+            print("Training interrupted by user.")
+            break
 
 
 def plot_battery_comparison(
