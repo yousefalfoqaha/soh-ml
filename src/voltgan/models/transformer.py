@@ -25,14 +25,12 @@ class EncoderBlock(nn.Module):
         )
         self.feedforward_norm = nn.LayerNorm(embedding_dim)
 
-    def forward(self, embeddings, causal_mask):
+    def forward(self, embeddings):
         attention, _ = self.self_attention(
             query=embeddings,
             key=embeddings,
             value=embeddings,
             need_weights=False,
-            is_causal=True,
-            attn_mask=causal_mask,
         )
         norm_sequence = self.attention_norm(embeddings + attention)
 
@@ -68,11 +66,6 @@ class BatteryEncoderTransformer(nn.Module):
         self.voltage_head = nn.Linear(embedding_dim, 1)
         self.temperature_head = nn.Linear(embedding_dim, 1)
 
-        self.register_buffer(
-            "causal_mask",
-            nn.Transformer.generate_square_subsequent_mask(window_length + 1),
-        )
-
     def forward(self, X, initial_conditions):
         # (batch_size, 2)
         initial_state = initial_conditions[:, 0:2]
@@ -91,7 +84,7 @@ class BatteryEncoderTransformer(nn.Module):
         contextual_sequence = self.soh_conditioning(contextual_sequence, soh)
 
         for block in self.blocks:
-            contextual_sequence = block(contextual_sequence, self.causal_mask)
+            contextual_sequence = block(contextual_sequence)
 
         # (batch_size, window_length, embedding_dim)
         target_sequence = contextual_sequence[:, 1:]

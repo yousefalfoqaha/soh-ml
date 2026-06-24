@@ -2,10 +2,14 @@ from pathlib import Path
 from typing import cast
 
 import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch._inductor.config as inductor_config
+
+inductor_config.max_autotune_gemm = False
 from torch.amp import GradScaler, autocast
 from torch.nn import Module
 from torch.optim import Optimizer
@@ -43,8 +47,6 @@ DROPOUT = 0.1
 
 
 def main():
-    inductor_config.max_autotune_gemm = False
-    matplotlib.use("Agg")
     torch.manual_seed(RANDOM_SEED)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
