@@ -14,10 +14,13 @@ class McuSample:
             group = f[filepath.name]
             assert isinstance(group, h5py.Group)
             signal = cast(h5py.Dataset, group["U"])
+
             self.type = filepath.parts[4]
             self.n_samples = len(signal)
+
             soh_file = f.attrs.get("soh_file")
-            self.soh = float(soh_file) if soh_file is not None else 1.0
+            if soh_file is not None:
+                self.soh = float(soh_file)
 
     def _load(self) -> np.ndarray:
         with h5py.File(self.filepath, "r") as f:

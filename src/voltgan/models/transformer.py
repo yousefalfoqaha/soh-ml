@@ -16,25 +16,26 @@ class EncoderBlock(nn.Module):
         self.self_attention = nn.MultiheadAttention(
             embedding_dim, n_heads, dropout, batch_first=True
         )
-        self.attention_norm = nn.LayerNorm(embedding_dim)
+        self.pre_attention_norm = nn.LayerNorm(embedding_dim)
         self.feedforward = nn.Sequential(
             nn.Linear(embedding_dim, feedforward_dim),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(feedforward_dim, embedding_dim),
         )
-        self.feedforward_norm = nn.LayerNorm(embedding_dim)
+        self.post_attention_norm = nn.LayerNorm(embedding_dim)
 
     def forward(self, embeddings):
+        pre_attention_embeddings = self.pre_attention_norm(embeddings)
         attention, _ = self.self_attention(
-            query=embeddings,
-            key=embeddings,
-            value=embeddings,
+            query=pre_attention_embeddings,
+            key=pre_attention_embeddings,
+            value=pre_attention_embeddings,
             need_weights=False,
         )
-        norm_sequence = self.attention_norm(embeddings + attention)
+        pre_feedforward_embeddings = self.post_attention_norm(embeddings + attention)
 
-        return self.feedforward_norm(norm_sequence + self.feedforward(norm_sequence))
+        return embeddings + self.feedforward(pre_feedforward_embeddings)
 
 
 class BatteryEncoderTransformer(nn.Module):
@@ -73,25 +74,27 @@ class BatteryEncoderTransformer(nn.Module):
         soh = initial_conditions[:, 2:3]
 
         # (batch_size, 1, embedding_dim)
-        boundary_token = self.initial_state_embedding(initial_state).unsqueeze(1)
+        boundary_embedding = self.initial_state_embedding(initial_state).unsqueeze(1)
 
         # (batch_size, window_length, embedding_dim)
-        sequence_embeddings = self.input_signal_embedding(X)
+        input_signal_embeddings = self.input_signal_embedding(X)
 
         # (batch_size, window_length + 1, embedding_dim)
-        combined_sequence = torch.cat([boundary_token, sequence_embeddings], dim=1)
-        contextual_sequence = self.pos_encoding(combined_sequence)
-        contextual_sequence = self.soh_conditioning(contextual_sequence, soh)
+        combined_embeddings = torch.cat(
+            [boundary_embedding, input_signal_embeddings], dim=1
+        )
+        contextual_embeddings = self.pos_encoding(combined_embeddings)
+        contextual_embeddings = self.soh_conditioning(contextual_embeddings, soh)
 
         for block in self.blocks:
-            contextual_sequence = block(contextual_sequence)
+            contextual_embeddings = block(contextual_embeddings)
 
         # (batch_size, window_length, embedding_dim)
-        target_sequence = contextual_sequence[:, 1:]
+        target_embeddings = contextual_embeddings[:, 1:]
 
         # (batch_size, window_length, 1)
-        predicted_voltage = self.voltage_head(target_sequence)
-        predicted_temperature = self.temperature_head(target_sequence)
+        predicted_voltage = self.voltage_head(target_embeddings)
+        predicted_temperature = self.temperature_head(target_embeddings)
 
         # (batch_size, window_length, 2)
         return torch.cat([predicted_voltage, predicted_temperature], dim=2)

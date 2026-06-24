@@ -1,7 +1,6 @@
 from asammdf import MDF
 
 from voltgan.pipeline.base import PipelineHandler, SampleContext
-from voltgan.pipeline.soh.base import SohResult
 from voltgan.pipeline.soh.discharge_time import DischargeTimeMergeStrategy
 from voltgan.pipeline.soh.pulse_integration import PulseIntegrationStrategy
 from voltgan.pipeline.soh.sohc import SOHCStrategy
@@ -23,7 +22,7 @@ class Mf4SohHandler(PipelineHandler):
 
     @property
     def order(self) -> int:
-        return 0
+        return 2
 
     def handle(self, context: SampleContext) -> SampleContext:
         mf4_path = context.source_path
@@ -39,7 +38,8 @@ class Mf4SohHandler(PipelineHandler):
                     result = strategy.calculate(mdf, self.qnom, self.raster)
                     break
             else:
-                result = SohResult(soh_file=0.0, method="no_strategy")
+                context.interrupted = "No SoH strategy suitable"
+                return context
         finally:
             mdf.close()
 

@@ -56,8 +56,8 @@ class Pipeline:
 
             for handler in self.handlers:
                 context = handler.handle(context)
+
                 if context.interrupted:
-                    print(
-                        f"[{handler.__class__.__name__}] Interrupted: {context.interrupted}"
+                    raise ValueError(
+                        f"[{handler.__class__.__name__}] {context.interrupted}"
                     )
-                    break

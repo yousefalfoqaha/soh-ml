@@ -7,7 +7,7 @@ from voltgan.pipeline.base import PipelineHandler, SampleContext
 class StatsEnrichHandler(PipelineHandler):
     @property
     def order(self) -> int:
-        return 2
+        return 3
 
     def handle(self, context: SampleContext) -> SampleContext:
         hdf_path = context.output_path

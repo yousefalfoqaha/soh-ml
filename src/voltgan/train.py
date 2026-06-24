@@ -19,9 +19,13 @@ from torch.utils.data import DataLoader
 
 from voltgan.data import McusDataset, Standardizer
 from voltgan.models import BatteryEncoderTransformer
-from voltgan.pipeline import HdfConvertHandler, Pipeline
-from voltgan.pipeline.soh import Mf4SohHandler
-from voltgan.pipeline.stats_enricher import StatsEnrichHandler
+from voltgan.pipeline import (
+    ChannelValidationHandler,
+    HdfConvertHandler,
+    Mf4SohHandler,
+    Pipeline,
+    StatsEnrichHandler,
+)
 
 TRAINING_MCUS = ["mcu1"]
 VALIDATION_MCUS = ["mcu2"]
@@ -35,16 +39,16 @@ CHANNELS = ["U", "I", "Temp[1]", "ClimaTemp"]
 RANDOM_SEED = 42
 PLOT_EPOCHS = {1, 10, 20}
 
-N_EPOCHS = 20
+N_EPOCHS = 30
 BATCH_SIZE = 32
 LEARNING_RATE = 0.0025
-WINDOW_LENGTH = 5000
-STRIDE = 5000
+WINDOW_LENGTH = 10000
+STRIDE = 10000
 
-EMBEDDING_DIM = 64
-FEEDFORWARD_DIM = 256
-N_HEADS = 4
-N_BLOCKS = 2
+EMBEDDING_DIM = 128
+FEEDFORWARD_DIM = 512
+N_HEADS = 8
+N_BLOCKS = 3
 DROPOUT = 0.1
 
 _interrupted = False
@@ -63,20 +67,21 @@ def _worker_init(worker_id):
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
+_PIPELINE_HANDLERS = [
+    ChannelValidationHandler(CHANNELS),
+    Mf4SohHandler(qnom=18000.0, raster=RASTER_FREQUENCY),
+    HdfConvertHandler(DATA_PATH, RASTER_FREQUENCY, CHANNELS),
+    StatsEnrichHandler(),
+]
+
+
 def main():
     torch.manual_seed(RANDOM_SEED)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    pipeline = Pipeline(
-        DATA_PATH,
-        handlers=[
-            Mf4SohHandler(qnom=18000.0, raster=RASTER_FREQUENCY),
-            HdfConvertHandler(DATA_PATH, RASTER_FREQUENCY, CHANNELS),
-            StatsEnrichHandler(),
-        ],
-    )
+    pipeline = Pipeline(DATA_PATH, _PIPELINE_HANDLERS)
     pipeline.run(TRAINING_MCUS + VALIDATION_MCUS)
 
     hdf_data_path = DATA_PATH / "hdf"
