@@ -1,5 +1,7 @@
+# mcu_dataset.py
 from pathlib import Path
 
+import numpy as np
 import torch
 
 from voltgan.data.mcu_sample import McuSample
@@ -15,21 +17,38 @@ class McusDataset(torch.utils.data.Dataset):
         stride: int,
         stats: dict,
     ):
+        self.window_length = window_length
+
+        self._means = np.array(
+            [
+                stats["U"]["mean"],
+                stats["I"]["mean"],
+                stats["Temp[1]"]["mean"],
+                stats["ClimaTemp"]["mean"],
+            ],
+            dtype=np.float32,
+        )
+        self._standard_deviations = np.array(
+            [
+                stats["U"]["standard_deviation"],
+                stats["I"]["standard_deviation"],
+                stats["Temp[1]"]["standard_deviation"],
+                stats["ClimaTemp"]["standard_deviation"],
+            ],
+            dtype=np.float32,
+        )
+
         self.samples: list[McuSample] = []
         self.window_map: list[tuple[int, int]] = []
-        self.window_length = window_length
-        self.stats = stats
-        self.stride = stride
 
         for hdf_path in discover(data_path, mcus, (".hdf",)):
             sample = McuSample(filepath=hdf_path)
             sample_i = len(self.samples)
             self.samples.append(sample)
-            n_windows = (sample.n_samples - window_length) // stride + 1
 
+            n_windows = (sample.n_samples - window_length) // stride + 1
             for i in range(n_windows):
-                start_i = i * stride
-                self.window_map.append((sample_i, start_i))
+                self.window_map.append((sample_i, i * stride))
 
         print(f"Mapped {len(self.window_map):,} windows from {len(mcus)} MCU(s).")
 
@@ -37,39 +56,26 @@ class McusDataset(torch.utils.data.Dataset):
         return len(self.window_map)
 
     def __getitem__(self, i):
-        if i >= len(self):
-            raise IndexError("dataset index out of range")
-
         sample_i, start_i = self.window_map[i]
         sample = self.samples[sample_i]
         end_i = start_i + self.window_length
 
-        window = sample.load_window(start_i, end_i)
+        # (window_length, 4)
+        raw = sample.load_window(start_i, end_i)
+        window = (raw - self._means) / self._standard_deviations
 
-        voltage_scaled = (window[0, :] - self.stats["U"]["mean"]) / self.stats["U"][
-            "std"
-        ]
-        current_scaled = (window[1, :] - self.stats["I"]["mean"]) / self.stats["I"][
-            "std"
-        ]
-        temperature_scaled = (
-            window[2, :] - self.stats["Temp[1]"]["mean"]
-        ) / self.stats["Temp[1]"]["std"]
-        ambient_temperature_scaled = (
-            window[3, :] - self.stats["ClimaTemp"]["mean"]
-        ) / self.stats["ClimaTemp"]["std"]
-
-        voltage = torch.from_numpy(voltage_scaled).float()
-        current = torch.from_numpy(current_scaled).float()
-        temperature = torch.from_numpy(temperature_scaled).float()
-        ambient_temperature = torch.from_numpy(ambient_temperature_scaled).float()
+        # (window_length,)
+        voltage = torch.from_numpy(window[:, 0]).float()
+        current = torch.from_numpy(window[:, 1]).float()
+        temperature = torch.from_numpy(window[:, 2]).float()
+        ambient_temperature = torch.from_numpy(window[:, 3]).float()
 
         # (window_length, 2)
         X = torch.stack([current, ambient_temperature], dim=1)
 
         # (3,)
         initial_conditions = torch.tensor(
-            [voltage_scaled[0], temperature_scaled[0], sample.soh], dtype=torch.float32
+            [window[0, 0], window[0, 2], sample.soh], dtype=torch.float32
         )
 
         # (window_length, 2)

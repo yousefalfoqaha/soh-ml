@@ -1,11 +1,12 @@
 from pathlib import Path
+from typing import cast
 
 import matplotlib
-
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torch._inductor.config as inductor_config
+from torch.amp import GradScaler, autocast
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
@@ -23,26 +24,29 @@ TESTING_MCUS = ["mcu3"]
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_PATH = _PROJECT_ROOT / "dataset"
 PLOTS_PATH = _PROJECT_ROOT / "plots"
-RASTER_FREQUENCY = 0.2
+RASTER_FREQUENCY = 0.1
 CHANNELS = ["U", "I", "Temp[1]", "ClimaTemp"]
 RANDOM_SEED = 42
-PLOT_EPOCHS = {1, 10, 20, 30}
+PLOT_EPOCHS = {1, 10, 20}
 
-N_EPOCHS = 50
-BATCH_SIZE = 64
+N_EPOCHS = 20
+BATCH_SIZE = 32
 LEARNING_RATE = 0.0025
-WINDOW_LENGTH = 5000
-STRIDE = 1000
+WINDOW_LENGTH = 2000
+STRIDE = 2000
 
 EMBEDDING_DIM = 64
-FEEDFORWARD_DIM = 256
-N_HEADS = 4
+FEEDFORWARD_DIM = 128
+N_HEADS = 2
 N_BLOCKS = 2
 DROPOUT = 0.1
 
 
 def main():
+    inductor_config.max_autotune_gemm = False
+    matplotlib.use("Agg")
     torch.manual_seed(RANDOM_SEED)
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
@@ -82,6 +86,7 @@ def main():
         shuffle=True,
         num_workers=4,
         pin_memory=True,
+        persistent_workers=True,
     )
     validation_loader = DataLoader(
         validation_dataset,
@@ -89,6 +94,7 @@ def main():
         shuffle=False,
         num_workers=4,
         pin_memory=True,
+        persistent_workers=True,
     )
 
     model = BatteryEncoderTransformer(
@@ -107,14 +113,17 @@ def main():
         T_max=N_EPOCHS,
         eta_min=1e-5,
     )
+    scaler = GradScaler()
+    compiled_model = cast(BatteryEncoderTransformer, torch.compile(model))
 
     train_and_validate(
-        model,
+        compiled_model,
         optimizer,
         criterion,
         training_loader,
         validation_loader,
         scheduler,
+        scaler,
         N_EPOCHS,
         device,
         stats,
@@ -128,6 +137,7 @@ def train_and_validate(
     training_loader: DataLoader,
     validation_loader: DataLoader,
     scheduler,
+    scaler: GradScaler,
     n_epochs: int,
     device: str,
     stats: dict,
@@ -138,56 +148,53 @@ def train_and_validate(
     )
 
     for epoch in range(n_epochs):
-        total_loss = 0.0
         total_training_loss = 0.0
+        total_validation_loss = 0.0
 
         model.train()
-
         for X, initial_conditions, y in training_loader:
-            X, initial_conditions, y = (
-                X.to(device),
-                initial_conditions.to(device),
-                y.to(device),
-            )
+            X = X.to(device, non_blocking=True)
+            initial_conditions = initial_conditions.to(device, non_blocking=True)
+            y = y.to(device, non_blocking=True)
 
-            optimizer.zero_grad()
-            y_prediction = model(X, initial_conditions)
-            loss = criterion(y_prediction, y)
+            with autocast(device_type="cuda"):
+                y_prediction = model(X, initial_conditions)
+                loss = criterion(y_prediction, y)
 
-            loss.backward()
-            optimizer.step()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad(set_to_none=True)
 
             total_training_loss += loss.item()
 
         scheduler.step()
 
         model.eval()
-
+        plotted = False
         with torch.no_grad():
-            plotted = False
             for X, initial_conditions, y in validation_loader:
-                X, initial_conditions, y = (
-                    X.to(device),
-                    initial_conditions.to(device),
-                    y.to(device),
-                )
+                X = X.to(device, non_blocking=True)
+                initial_conditions = initial_conditions.to(device, non_blocking=True)
+                y = y.to(device, non_blocking=True)
 
-                y_prediction = model(X, initial_conditions)
-                loss = criterion(y_prediction, y)
+                with autocast(device_type="cuda"):
+                    y_prediction = model(X, initial_conditions)
+                    loss = criterion(y_prediction, y)
 
-                total_loss += loss.item()
+                total_validation_loss += loss.item()
 
                 if epoch in PLOT_EPOCHS and not plotted:
-                    sample_target = y[0, :, :].cpu().numpy()
-                    sample_prediction = y_prediction[0, :, :].cpu().numpy()
-
                     plot_battery_comparison(
-                        sample_target, sample_prediction, epoch, stats
+                        y[0, :, :].cpu().numpy(),
+                        y_prediction[0, :, :].cpu().numpy(),
+                        epoch,
+                        stats,
                     )
                     plotted = True
 
         mean_training_loss = total_training_loss / len(training_loader)
-        mean_validation_loss = total_loss / len(validation_loader)
+        mean_validation_loss = total_validation_loss / len(validation_loader)
 
         print(
             f"Epoch {epoch + 1:02d}/{n_epochs} | "
@@ -203,17 +210,15 @@ def plot_battery_comparison(
     t_stats = stats["Temp[1]"]
 
     y_true_denorm = y_true.copy()
-    y_true_denorm[:, 0] = y_true[:, 0] * u_stats["std"] + u_stats["mean"]
-    y_true_denorm[:, 1] = y_true[:, 1] * t_stats["std"] + t_stats["mean"]
+    y_true_denorm[:, 0] = y_true[:, 0] * u_stats["standard_deviation"] + u_stats["mean"]
+    y_true_denorm[:, 1] = y_true[:, 1] * t_stats["standard_deviation"] + t_stats["mean"]
 
     y_pred_denorm = y_pred.copy()
-    y_pred_denorm[:, 0] = y_pred[:, 0] * u_stats["std"] + u_stats["mean"]
-    y_pred_denorm[:, 1] = y_pred[:, 1] * t_stats["std"] + t_stats["mean"]
+    y_pred_denorm[:, 0] = y_pred[:, 0] * u_stats["standard_deviation"] + u_stats["mean"]
+    y_pred_denorm[:, 1] = y_pred[:, 1] * t_stats["standard_deviation"] + t_stats["mean"]
 
     fig, axs = plt.subplots(1, 2, figsize=(12, 5), layout="constrained")
-
-    time_steps, _ = y_true.shape
-    t = np.arange(time_steps)
+    t = np.arange(y_true.shape[0])
 
     axs[0].plot(t, y_true_denorm[:, 0], color="black", label="True U")
     axs[0].plot(
@@ -241,8 +246,9 @@ def plot_battery_comparison(
     axs[1].legend()
 
     fig.suptitle(f"Epoch {epoch} Results")
-
-    fig.savefig(
-        PLOTS_PATH.joinpath(f"epoch_{epoch:02d}.png"), dpi=150, bbox_inches="tight"
-    )
+    fig.savefig(PLOTS_PATH / f"epoch_{epoch:02d}.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
+
+
+if __name__ == "__main__":
+    main()

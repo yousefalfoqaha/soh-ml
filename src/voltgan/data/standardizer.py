@@ -11,8 +11,6 @@ class Standardizer:
         self.data_path = data_path
 
     def compute(self, mcus: list[str]) -> dict[str, dict[str, float]]:
-        print("\nCalculating global standardization stats...")
-
         channel_stats: dict[str, dict[str, float]] = {}
         total_rows = 0
 
@@ -54,7 +52,10 @@ class Standardizer:
                 stats["m2_sum"] + stats["sum_sq"] - total_rows * mean * mean
             ) / total_rows
             standard_deviation = float(np.sqrt(max(variance, 1e-8)))
-            result[channel] = {"mean": float(mean), "std": standard_deviation}
+            result[channel] = {
+                "mean": float(mean),
+                "standard_deviation": standard_deviation,
+            }
 
         self._print_stats(result, total_rows)
         return result
@@ -63,4 +64,6 @@ class Standardizer:
     def _print_stats(stats: dict[str, dict[str, float]], total_rows: int):
         print(f"  Total time steps: {total_rows:,}")
         for channel, s in stats.items():
-            print(f"  {channel:12s} -> Mean: {s['mean']:10.4f} | Std: {s['std']:10.4f}")
+            print(
+                f"  {channel:12s} -> Mean: {s['mean']:10.4f} | standard_deviation: {s['standard_deviation']:10.4f}"
+            )

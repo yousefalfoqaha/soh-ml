@@ -65,12 +65,12 @@ class HdfConvertHandler(PipelineHandler):
         print(f"Finished converting: {hdf_path.name}")
         return context
 
-    def _write_soh_metadata(self, hdf_path: Path, ctx: SampleContext) -> None:
-        if "soh_file" not in ctx.metadata:
+    def _write_soh_metadata(self, hdf_path: Path, context: SampleContext) -> None:
+        if "soh_file" not in context.metadata:
             return
 
-        soh_file = ctx.metadata.get("soh_file", 0.0)
-        soh_method = ctx.metadata.get("soh_method", "")
+        soh_file = context.metadata.get("soh_file", 0.0)
+        soh_method = context.metadata.get("soh_method", "")
 
         with h5py.File(hdf_path, "a") as f:
             if "soh_values" in f:

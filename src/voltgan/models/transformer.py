@@ -16,23 +16,23 @@ class EncoderBlock(nn.Module):
         self.self_attention = nn.MultiheadAttention(
             embedding_dim, n_heads, dropout, batch_first=True
         )
-
         self.attention_norm = nn.LayerNorm(embedding_dim)
-
         self.feedforward = nn.Sequential(
             nn.Linear(embedding_dim, feedforward_dim),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(feedforward_dim, embedding_dim),
         )
-
         self.feedforward_norm = nn.LayerNorm(embedding_dim)
 
-    def forward(self, embeddings):
+    def forward(self, embeddings, causal_mask):
         attention, _ = self.self_attention(
             query=embeddings,
             key=embeddings,
             value=embeddings,
+            need_weights=False,
+            is_causal=True,
+            attn_mask=causal_mask,
         )
         norm_sequence = self.attention_norm(embeddings + attention)
 
@@ -50,7 +50,6 @@ class BatteryEncoderTransformer(nn.Module):
         dropout: float = 0.1,
     ):
         super().__init__()
-        self.n_blocks = n_blocks
         self.input_signal_embedding = nn.Linear(2, embedding_dim)
         self.initial_state_embedding = nn.Linear(2, embedding_dim)
 
@@ -68,6 +67,11 @@ class BatteryEncoderTransformer(nn.Module):
 
         self.voltage_head = nn.Linear(embedding_dim, 1)
         self.temperature_head = nn.Linear(embedding_dim, 1)
+
+        self.register_buffer(
+            "causal_mask",
+            nn.Transformer.generate_square_subsequent_mask(window_length + 1),
+        )
 
     def forward(self, X, initial_conditions):
         # (batch_size, 2)
@@ -87,7 +91,7 @@ class BatteryEncoderTransformer(nn.Module):
         contextual_sequence = self.soh_conditioning(contextual_sequence, soh)
 
         for block in self.blocks:
-            contextual_sequence = block(contextual_sequence)
+            contextual_sequence = block(contextual_sequence, self.causal_mask)
 
         # (batch_size, window_length, embedding_dim)
         target_sequence = contextual_sequence[:, 1:]

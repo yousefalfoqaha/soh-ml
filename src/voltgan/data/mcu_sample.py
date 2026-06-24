@@ -8,30 +8,35 @@ import numpy as np
 class McuSample:
     def __init__(self, filepath: Path):
         self.filepath = filepath
+        self._data: np.ndarray | None = None
 
         with h5py.File(filepath, "r") as f:
             group = f[filepath.name]
             assert isinstance(group, h5py.Group)
-            signal = group["U"]
-            assert isinstance(signal, h5py.Dataset)
-
+            signal = cast(h5py.Dataset, group["U"])
             self.type = filepath.parts[4]
             self.n_samples = len(signal)
-
             soh_file = f.attrs.get("soh_file")
             self.soh = float(soh_file) if soh_file is not None else 1.0
 
-    def __len__(self):
-        return self.n_samples
-
-    def load_window(self, start: int, end: int) -> np.ndarray:
+    def _load(self) -> np.ndarray:
         with h5py.File(self.filepath, "r") as f:
             group = f[self.filepath.name]
             assert isinstance(group, h5py.Group)
+            return np.stack(
+                [
+                    cast(h5py.Dataset, group["U"])[:],
+                    cast(h5py.Dataset, group["I"])[:],
+                    cast(h5py.Dataset, group["Temp[1]"])[:],
+                    cast(h5py.Dataset, group["ClimaTemp"])[:],
+                ]
+            ).T.astype(np.float32)
 
-            voltage = cast(h5py.Dataset, group["U"])[start:end]
-            current = cast(h5py.Dataset, group["I"])[start:end]
-            temperature = cast(h5py.Dataset, group["Temp[1]"])[start:end]
-            ambient_temperature = cast(h5py.Dataset, group["ClimaTemp"])[start:end]
+    @property
+    def data(self) -> np.ndarray:
+        if self._data is None:
+            self._data = self._load()
+        return self._data
 
-            return np.stack([voltage, current, temperature, ambient_temperature])
+    def load_window(self, start: int, end: int) -> np.ndarray:
+        return self.data[start:end, :]
