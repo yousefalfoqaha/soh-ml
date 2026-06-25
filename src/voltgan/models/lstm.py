@@ -23,10 +23,10 @@ class LstmModel(nn.Module):
         )
 
     def forward(self, X, initial_conditions):
-        _, seq_len, _ = X.shape
+        _, window_length, _ = X.shape
 
         initial_conditions_expanded = initial_conditions.unsqueeze(1).expand(
-            -1, seq_len, -1
+            -1, window_length, -1
         )
 
         lstm_input = torch.cat([X, initial_conditions_expanded], dim=-1)

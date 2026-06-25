@@ -67,8 +67,8 @@ class BatteryEncoderTransformer(nn.Module):
             ]
         )
 
-        self.voltage_head = nn.Linear(embedding_dim, 1)
-        self.temperature_head = nn.Linear(embedding_dim, 1)
+        self.voltage_delta_head = nn.Linear(embedding_dim, 1)
+        self.temperature_delta_head = nn.Linear(embedding_dim, 1)
 
     def forward(self, X, initial_conditions):
         # (batch_size, 2)
@@ -96,8 +96,12 @@ class BatteryEncoderTransformer(nn.Module):
         target_embeddings = contextual_embeddings[:, 1:]
 
         # (batch_size, window_length, 1)
-        predicted_voltage = self.voltage_head(target_embeddings)
-        predicted_temperature = self.temperature_head(target_embeddings)
+        predicted_voltage_deltas = self.voltage_delta_head(target_embeddings)
+        predicted_temperature_deltas = self.temperature_delta_head(target_embeddings)
 
         # (batch_size, window_length, 2)
-        return torch.cat([predicted_voltage, predicted_temperature], dim=2)
+        predicted_values = torch.cat(
+            [predicted_voltage_deltas, predicted_temperature_deltas], dim=2
+        ) + initial_state.unsqueeze(1)
+
+        return predicted_values

@@ -34,21 +34,25 @@ TESTING_MCUS = ["mcu3"]
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_PATH = _PROJECT_ROOT / "dataset"
 PLOTS_PATH = _PROJECT_ROOT / "plots"
+CHECKPOINT_PATH = _PROJECT_ROOT / "model.pt"
+
 RASTER_FREQUENCY = 0.1
 CHANNELS = ["U", "I", "Temp[1]", "ClimaTemp"]
+PLOT_EPOCHS = {1, 10, 20, 30}
+
 RANDOM_SEED = 42
-PLOT_EPOCHS = {1, 10, 20}
 
 N_EPOCHS = 30
 BATCH_SIZE = 32
 LEARNING_RATE = 0.0025
-WINDOW_LENGTH = 10000
-STRIDE = 10000
+
+WINDOW_LENGTH = 8000
+STRIDE = 4000
 
 EMBEDDING_DIM = 128
 FEEDFORWARD_DIM = 512
 N_HEADS = 8
-N_BLOCKS = 3
+N_BLOCKS = 2
 DROPOUT = 0.1
 
 _interrupted = False
@@ -86,8 +90,9 @@ def main():
 
     hdf_data_path = DATA_PATH / "hdf"
 
-    standardizer = Standardizer(hdf_data_path)
+    standardizer = Standardizer(DATA_PATH)
     stats = standardizer.compute(TRAINING_MCUS)
+    standardizer.save(stats)
 
     training_dataset = McusDataset(
         mcus=TRAINING_MCUS,
@@ -154,6 +159,10 @@ def main():
         device,
         stats,
     )
+
+    torch.save(model.state_dict(), CHECKPOINT_PATH)
+
+    print(f"Model saved → {CHECKPOINT_PATH}")
 
 
 def train_and_validate(
@@ -284,6 +293,7 @@ def plot_battery_comparison(
     axs[1].legend()
 
     fig.suptitle(f"Epoch {epoch} Results")
+    PLOTS_PATH.mkdir(parents=True, exist_ok=True)
     fig.savefig(PLOTS_PATH / f"epoch_{epoch:02d}.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
 

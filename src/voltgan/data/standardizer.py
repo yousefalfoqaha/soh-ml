@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import h5py
@@ -14,11 +15,13 @@ class Standardizer:
         channel_stats: dict[str, dict[str, float]] = {}
         total_rows = 0
 
-        for hdf_path in discover(self.data_path, mcus, (".hdf",)):
+        data_path = self.data_path / "hdf"
+        for hdf_path in discover(data_path, mcus, (".hdf",)):
             with h5py.File(hdf_path, "r") as f:
                 n_rows = int(f.attrs.get("total_rows", 0))
                 if n_rows == 0:
                     continue
+
                 total_rows += n_rows
 
                 group = f[hdf_path.name]
@@ -29,6 +32,7 @@ class Standardizer:
                         continue
 
                     dataset = group[key]
+
                     if not isinstance(dataset, h5py.Dataset):
                         continue
 
@@ -52,18 +56,29 @@ class Standardizer:
                 stats["m2_sum"] + stats["sum_sq"] - total_rows * mean * mean
             ) / total_rows
             standard_deviation = float(np.sqrt(max(variance, 1e-8)))
+
             result[channel] = {
                 "mean": float(mean),
                 "standard_deviation": standard_deviation,
             }
 
         self._print_stats(result, total_rows)
+
         return result
+
+    def save(self, stats: dict[str, dict[str, float]]) -> None:
+        stats_path = self.data_path / "stats.json"
+        stats_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(stats_path, "w") as f:
+            json.dump(stats, f, indent=2)
+
+        print(f"Stats saved → {stats_path}")
 
     @staticmethod
     def _print_stats(stats: dict[str, dict[str, float]], total_rows: int):
         print(f"  Total time steps: {total_rows:,}")
+
         for channel, s in stats.items():
             print(
-                f"  {channel:12s} -> Mean: {s['mean']:10.4f} | standard_deviation: {s['standard_deviation']:10.4f}"
+                f"{channel:12s} -> Mean: {s['mean']:10.4f} | standard_deviation: {s['standard_deviation']:10.4f}"
             )
