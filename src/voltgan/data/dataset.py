@@ -72,12 +72,10 @@ class McusDataset(torch.utils.data.Dataset):
         # (window_length, 2)
         X = torch.stack([current, ambient_temperature], dim=1)
 
-        # (3,)
-        initial_conditions = torch.tensor(
-            [window[0, 0], window[0, 2], sample.soh], dtype=torch.float32
-        )
+        # (1,)
+        conditions = torch.tensor([sample.soh], dtype=torch.float32)
 
         # (window_length, 2)
         y = torch.stack([voltage, temperature], dim=1)
 
-        return X, initial_conditions, y
+        return X, conditions, y

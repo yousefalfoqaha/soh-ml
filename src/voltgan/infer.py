@@ -7,12 +7,14 @@ from pathlib import Path
 import h5py
 import matplotlib
 
+from voltgan.models.gru import BatteryGruModel
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from voltgan.models import BatteryEncoderTransformer
+# from voltgan.models import BatteryEncoderTransformer
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _DATA_PATH = _PROJECT_ROOT / "dataset"
@@ -24,10 +26,18 @@ _PLOTS_PATH = _PROJECT_ROOT / "plots"
 WINDOW_LENGTH = 8000
 STRIDE = 4000
 
+# transformer
 EMBEDDING_DIM = 128
 FEEDFORWARD_DIM = 512
 N_HEADS = 8
 N_BLOCKS = 2
+
+# gru
+INPUT_SIZE = 2
+CONDITIONS_SIZE = 1
+HIDDEN_SIZE = 128
+OUTPUT_SIZE = 2
+N_LAYERS = 2
 
 
 def _read_hdf(
@@ -40,61 +50,61 @@ def _read_hdf(
             return group[ch][:]
 
         current = _load("I")
-        clima_temp = _load("ClimaTemp")
+        climate_temperature = _load("ClimaTemp")
         voltage = _load("U")
         temperature = _load("Temp[1]")
         soh = float(f.attrs.get("soh_file", 1.0))
 
-    return current, clima_temp, voltage, temperature, soh
+    return current, climate_temperature, voltage, temperature, soh
 
 
-def _std(arr: np.ndarray, s: dict) -> np.ndarray:
+def _standardize(arr: np.ndarray, s: dict) -> np.ndarray:
     return (arr - s["mean"]) / s["standard_deviation"]
 
 
-def _destd(arr: np.ndarray, s: dict) -> np.ndarray:
+def _destandardize(arr: np.ndarray, s: dict) -> np.ndarray:
     return arr * s["standard_deviation"] + s["mean"]
 
 
 def _make_windows(
     current: np.ndarray,
-    clima_temp: np.ndarray,
+    climate_temperature: np.ndarray,
     voltage: np.ndarray,
     temperature: np.ndarray,
-    soh: float,
     stats: dict,
     window_length: int,
     stride: int,
-) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
-    i_std = _std(current, stats["I"])
-    c_std = _std(clima_temp, stats["ClimaTemp"])
-    u_std = _std(voltage, stats["U"])
-    t_std = _std(temperature, stats["Temp[1]"])
+) -> tuple[list[np.ndarray], list[np.ndarray]]:
+    current = _standardize(current, stats["I"])
+    climate_temperature = _standardize(climate_temperature, stats["ClimaTemp"])
+    voltage = _standardize(voltage, stats["U"])
+    battery_temperature = _standardize(temperature, stats["Temp[1]"])
 
-    X_windows, ic_windows, y_raw_windows = [], [], []
+    X_windows, y_windows = [], []
 
     start = 0
     while start + window_length <= len(current):
         end = start + window_length
         X_windows.append(
-            np.stack([i_std[start:end], c_std[start:end]], axis=1).astype(np.float32)
+            np.stack(
+                [current[start:end], climate_temperature[start:end]], axis=1
+            ).astype(np.float32)
         )
-        ic_windows.append(np.array([u_std[start], t_std[start], soh], dtype=np.float32))
-        y_raw_windows.append(
-            np.stack([voltage[start:end], temperature[start:end]], axis=1)
+        y_windows.append(
+            np.stack([voltage[start:end], battery_temperature[start:end]], axis=1)
         )
         start += stride
 
-    return X_windows, ic_windows, y_raw_windows
+    return X_windows, y_windows
 
 
-def _load_model(device: str) -> BatteryEncoderTransformer:
-    model = BatteryEncoderTransformer(
-        embedding_dim=EMBEDDING_DIM,
-        n_heads=N_HEADS,
-        n_blocks=N_BLOCKS,
-        window_length=WINDOW_LENGTH,
-        feedforward_dim=FEEDFORWARD_DIM,
+def _load_model(device: str) -> torch.nn.Module:
+    model = BatteryGruModel(
+        input_size=INPUT_SIZE,
+        conditions_size=CONDITIONS_SIZE,
+        hidden_size=HIDDEN_SIZE,
+        output_size=OUTPUT_SIZE,
+        n_layers=N_LAYERS,
         dropout=0.0,
     ).to(device)
 
@@ -102,7 +112,7 @@ def _load_model(device: str) -> BatteryEncoderTransformer:
         model.load_state_dict(torch.load(_CHECKPOINT, map_location=device))
         print(f"Loaded weights from {_CHECKPOINT}")
     else:
-        print(f"No checkpoint found at {_CHECKPOINT} – running with random weights.")
+        raise ValueError("No model.pt found.")
 
     model.eval()
     return model
@@ -110,63 +120,93 @@ def _load_model(device: str) -> BatteryEncoderTransformer:
 
 @torch.no_grad()
 def run_inference(
-    model: BatteryEncoderTransformer,
+    model: torch.nn.Module,
     X_windows: list[np.ndarray],
-    ic_windows: list[np.ndarray],
+    start_values: np.ndarray,
+    conditions: np.ndarray,
     device: str,
 ) -> list[np.ndarray]:
     predictions = []
-    ic = ic_windows[0]
-    soh = ic[2]
+    hidden_state = None
 
-    for X in X_windows:
-        X_t = torch.tensor(X, dtype=torch.float32).unsqueeze(0).to(device)
-        ic_t = torch.tensor(ic, dtype=torch.float32).unsqueeze(0).to(device)
+    # (1, conditions_size)
+    conditions_tensor = (
+        torch.tensor([conditions], dtype=torch.float32).unsqueeze(0).to(device)
+    )
 
-        # (window_length, 2)
-        pred = model(X_t, ic_t).squeeze(0).cpu().numpy()
-        predictions.append(pred)
+    # (1, output_size)
+    start_values_tensor = (
+        torch.tensor(start_values, dtype=torch.float32).unsqueeze(0).to(device)
+    )
 
-        ic = np.array([pred[-1, 0], pred[-1, 1], soh], dtype=np.float32)
+    for i in range(len(X_windows)):
+        # (window_length, input_size)
+        X = X_windows[i]
+
+        # (1, window_length, input_size)
+        X_tensor = torch.tensor(X, dtype=torch.float32).unsqueeze(0).to(device)
+
+        # 1: (1, window_length, output_size)
+        # 2: (n_layers, 1, hidden_size)
+        prediction_tensor, hidden_state = model(
+            X_tensor, conditions_tensor, start_values_tensor, hidden_state
+        )
+
+        start_values_tensor = prediction_tensor[:, -1, :]
+
+        prediction = prediction_tensor.squeeze(0).cpu().numpy()
+        predictions.append(prediction)
 
     return predictions
 
 
 def _plot(
     y_true: np.ndarray,
-    y_pred: np.ndarray,
+    y_prediction: np.ndarray,
     stats: dict,
     stem: str,
     n_windows: int,
 ) -> None:
-    u_true = y_true[:, 0]
-    t_true = y_true[:, 1]
-    u_pred = _destd(y_pred[:, 0], stats["U"])
-    t_pred = _destd(y_pred[:, 1], stats["Temp[1]"])
+    voltage_true = y_true[:, 0]
+    temperature_true = y_true[:, 1]
+    voltage_prediction = _destandardize(y_prediction[:, 0], stats["U"])
+    temperature_prediction = _destandardize(y_prediction[:, 1], stats["Temp[1]"])
 
-    ts = np.arange(len(y_true))
+    timesteps = np.arange(len(y_true))
 
-    fig, (ax_u, ax_t) = plt.subplots(2, 1, figsize=(16, 8), layout="constrained")
+    fig, (ax_1, ax_2) = plt.subplots(2, 1, figsize=(16, 8), layout="constrained")
 
-    ax_u.plot(ts, u_true, color="black", lw=0.8, label="True U")
-    ax_u.plot(
-        ts, u_pred, color="red", lw=0.8, linestyle="--", alpha=0.8, label="Pred U"
+    ax_1.plot(timesteps, voltage_true, color="black", lw=0.8, label="True U")
+    ax_1.plot(
+        timesteps,
+        voltage_prediction,
+        color="red",
+        lw=0.8,
+        linestyle="--",
+        alpha=0.8,
+        label="Pred U",
     )
-    ax_u.set_title("Voltage")
-    ax_u.set_ylabel("Voltage (V)")
-    ax_u.set_xlabel("Time steps (0.1 s)")
-    ax_u.legend(fontsize=9)
-    ax_u.grid(True, alpha=0.3)
+    ax_1.set_title("Voltage")
+    ax_1.set_ylabel("Voltage (V)")
+    ax_1.set_xlabel("Time steps (0.1 s)")
+    ax_1.legend(fontsize=9)
+    ax_1.grid(True, alpha=0.3)
 
-    ax_t.plot(ts, t_true, color="darkred", lw=0.8, label="True Temp")
-    ax_t.plot(
-        ts, t_pred, color="blue", lw=0.8, linestyle="--", alpha=0.8, label="Pred Temp"
+    ax_2.plot(timesteps, temperature_true, color="darkred", lw=0.8, label="True Temp")
+    ax_2.plot(
+        timesteps,
+        temperature_prediction,
+        color="blue",
+        lw=0.8,
+        linestyle="--",
+        alpha=0.8,
+        label="Pred Temp",
     )
-    ax_t.set_title("Temperature")
-    ax_t.set_ylabel("Temperature (°C)")
-    ax_t.set_xlabel("Time steps (0.1 s)")
-    ax_t.legend(fontsize=9)
-    ax_t.grid(True, alpha=0.3)
+    ax_2.set_title("Temperature")
+    ax_2.set_ylabel("Temperature (°C)")
+    ax_2.set_xlabel("Time steps (0.1 s)")
+    ax_2.legend(fontsize=9)
+    ax_2.grid(True, alpha=0.3)
 
     fig.suptitle(
         f"{stem}  |  {n_windows} windows × {WINDOW_LENGTH} steps = {len(y_true):,} total",
@@ -215,7 +255,7 @@ def main() -> None:
         raise FileNotFoundError(f"HDF file not found: {hdf_path}")
 
     print(f"Reading {hdf_path} …")
-    current, clima_temp, voltage, temperature, soh = _read_hdf(hdf_path)
+    current, climate_temperature, voltage, temperature, soh = _read_hdf(hdf_path)
     print(
         f"  {len(current):,} samples  |  SoH={soh:.4f}  |  "
         f"U ∈ [{voltage.min():.2f}, {voltage.max():.2f}] V  |  "
@@ -230,12 +270,11 @@ def main() -> None:
         stats = json.load(f)
     print(f"Stats loaded from {_STATS_PATH}")
 
-    X_windows, ic_windows, y_raw_windows = _make_windows(
+    X_windows, y_windows = _make_windows(
         current,
-        clima_temp,
+        climate_temperature,
         voltage,
         temperature,
-        soh,
         stats,
         WINDOW_LENGTH,
         args.stride,
@@ -248,14 +287,16 @@ def main() -> None:
         )
 
     model = _load_model(device)
-    pred_windows = run_inference(model, X_windows, ic_windows, device)
+    conditions = np.array(soh)
+    start_values = y_windows[0][0, :]
+    pred_windows = run_inference(model, X_windows, start_values, conditions, device)
 
     # (total_steps, 2)
-    y_true = np.concatenate(y_raw_windows, axis=0)
-    y_pred = np.concatenate(pred_windows, axis=0)
+    y_true = np.concatenate(y_windows, axis=0)
+    y_prediction = np.concatenate(pred_windows, axis=0)
 
     stem = hdf_path.stem[:40]
-    _plot(y_true, y_pred, stats, stem, n_windows)
+    _plot(y_true, y_prediction, stats, stem, n_windows)
 
 
 if __name__ == "__main__":

@@ -18,7 +18,7 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 from voltgan.data import McusDataset, Standardizer
-from voltgan.models import BatteryEncoderTransformer
+from voltgan.models import BatteryGruModel
 from voltgan.pipeline import (
     ChannelValidationHandler,
     HdfConvertHandler,
@@ -49,11 +49,19 @@ LEARNING_RATE = 0.0025
 WINDOW_LENGTH = 8000
 STRIDE = 4000
 
+# transformer
 EMBEDDING_DIM = 128
 FEEDFORWARD_DIM = 512
 N_HEADS = 8
 N_BLOCKS = 2
 DROPOUT = 0.1
+
+# gru
+INPUT_SIZE = 2
+CONDITIONS_SIZE = 1
+HIDDEN_SIZE = 128
+OUTPUT_SIZE = 2
+N_LAYERS = 2
 
 _interrupted = False
 
@@ -128,12 +136,12 @@ def main():
         worker_init_fn=_worker_init,
     )
 
-    model = BatteryEncoderTransformer(
-        embedding_dim=EMBEDDING_DIM,
-        n_heads=N_HEADS,
-        n_blocks=N_BLOCKS,
-        window_length=WINDOW_LENGTH,
-        feedforward_dim=FEEDFORWARD_DIM,
+    model = BatteryGruModel(
+        input_size=INPUT_SIZE,
+        conditions_size=CONDITIONS_SIZE,
+        hidden_size=HIDDEN_SIZE,
+        output_size=OUTPUT_SIZE,
+        n_layers=N_LAYERS,
         dropout=DROPOUT,
     ).to(device)
 
@@ -145,7 +153,7 @@ def main():
         eta_min=1e-5,
     )
     scaler = GradScaler()
-    compiled_model = cast(BatteryEncoderTransformer, torch.compile(model))
+    compiled_model = cast(BatteryGruModel, torch.compile(model))
 
     train_and_validate(
         compiled_model,
@@ -187,13 +195,14 @@ def train_and_validate(
         total_validation_loss = 0.0
 
         model.train()
-        for X, initial_conditions, y in training_loader:
+        for X, conditions, y in training_loader:
             X = X.to(device, non_blocking=True)
-            initial_conditions = initial_conditions.to(device, non_blocking=True)
             y = y.to(device, non_blocking=True)
+            conditions = conditions.to(device, non_blocking=True)
+            start_values = y[:, 0, :].to(device, non_blocking=True)
 
             with autocast(device_type="cuda"):
-                y_prediction = model(X, initial_conditions)
+                y_prediction, _ = model(X, conditions, start_values)
                 loss = criterion(y_prediction, y)
 
             scaler.scale(loss).backward()
@@ -208,13 +217,14 @@ def train_and_validate(
         model.eval()
         plotted = False
         with torch.no_grad():
-            for X, initial_conditions, y in validation_loader:
+            for X, conditions, y in validation_loader:
                 X = X.to(device, non_blocking=True)
-                initial_conditions = initial_conditions.to(device, non_blocking=True)
                 y = y.to(device, non_blocking=True)
+                start_values = y[:, 0, :].to(device, non_blocking=True)
+                conditions = conditions.to(device, non_blocking=True)
 
                 with autocast(device_type="cuda"):
-                    y_prediction = model(X, initial_conditions)
+                    y_prediction, _ = model(X, conditions, start_values)
                     loss = criterion(y_prediction, y)
 
                 total_validation_loss += loss.item()
