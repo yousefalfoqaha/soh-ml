@@ -29,7 +29,7 @@ class HdfConvertHandler(PipelineHandler):
             return context
 
         hdf_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"Converting {mf4_path.name}...")
+        print(f"Converting to HDF...")
 
         mdf = MDF(name=mf4_path, channels=self.channels)
         try:
@@ -45,8 +45,6 @@ class HdfConvertHandler(PipelineHandler):
             mdf.close()
 
         self._write_soh_metadata(hdf_path, context)
-
-        print(f"Finished converting: {hdf_path.name}")
 
         return context
 

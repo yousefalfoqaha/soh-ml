@@ -10,7 +10,7 @@ from voltgan.pipeline.soh_strategies.utils import (
 )
 
 
-class DischargeTimeMergeStrategy(SohStrategy):
+class DischargeTimeStrategy(SohStrategy):
     MERGE_GAP_SECONDS = 1000.0
 
     def can_handle(self, mdf: MDF) -> bool:
@@ -21,7 +21,7 @@ class DischargeTimeMergeStrategy(SohStrategy):
         )
 
     def calculate(
-        self, mdf: MDF, nominal_charge: float, raster: float, context: SampleContext
+        self, mdf: MDF, nominal_capacity: float, raster: float, context: SampleContext
     ) -> SampleContext:
         start = _safe_get_channel(mdf, "sgl_discharge_time_start")
         end = _safe_get_channel(mdf, "sgl_discharge_time_end")
@@ -44,7 +44,7 @@ class DischargeTimeMergeStrategy(SohStrategy):
             if not np.any(mask):
                 continue
             integrated = abs(float(np.trapezoid(current[mask], timestamps[mask])))
-            soh = min(integrated / nominal_charge, 1.0)
+            soh = min(integrated / nominal_capacity, 1.0)
             if soh >= 0.05:
                 soh_values.append(soh)
 

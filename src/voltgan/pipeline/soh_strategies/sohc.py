@@ -14,7 +14,7 @@ class SOHCStrategy(SohStrategy):
         )
 
     def calculate(
-        self, mdf: MDF, nominal_charge: float, raster: float, context: SampleContext
+        self, mdf: MDF, nominal_capacity: float, raster: float, context: SampleContext
     ) -> SampleContext:
         sohc = _safe_get_channel(mdf, "sgl_SOHC")
         if sohc is None or len(sohc) == 0:

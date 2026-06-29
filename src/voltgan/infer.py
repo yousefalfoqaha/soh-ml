@@ -7,14 +7,12 @@ from pathlib import Path
 import h5py
 import matplotlib
 
-from voltgan.models.gru import BatteryGruModel
+from voltgan.models.generator_gru import GeneratorGru
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-
-# from voltgan.models import BatteryEncoderTransformer
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _DATA_PATH = _PROJECT_ROOT / "dataset"
@@ -23,21 +21,18 @@ _STATS_PATH = _DATA_PATH / "stats.json"
 _CHECKPOINT = _PROJECT_ROOT / "model.pt"
 _PLOTS_PATH = _PROJECT_ROOT / "plots"
 
-WINDOW_LENGTH = 8000
-STRIDE = 4000
-
-# transformer
-EMBEDDING_DIM = 128
-FEEDFORWARD_DIM = 512
-N_HEADS = 8
-N_BLOCKS = 2
+WINDOW_LENGTH = 500
+STRIDE = 500
 
 # gru
-INPUT_SIZE = 2
-CONDITIONS_SIZE = 1
-HIDDEN_SIZE = 128
-OUTPUT_SIZE = 2
+INPUT_FEATURES = 2
+N_CONDITIONS = 1
+HIDDEN_SIZE = 512
+OUTPUT_FEATURES = 2
 N_LAYERS = 2
+
+NOISE_DIM = 32
+CONDITION_DIM = 8
 
 
 def _read_hdf(
@@ -85,13 +80,16 @@ def _make_windows(
     start = 0
     while start + window_length <= len(current):
         end = start + window_length
+        # X only contains the exogenous physical forces now
         X_windows.append(
             np.stack(
                 [current[start:end], climate_temperature[start:end]], axis=1
             ).astype(np.float32)
         )
         y_windows.append(
-            np.stack([voltage[start:end], battery_temperature[start:end]], axis=1)
+            np.stack(
+                [voltage[start:end], battery_temperature[start:end]], axis=1
+            ).astype(np.float32)
         )
         start += stride
 
@@ -99,13 +97,15 @@ def _make_windows(
 
 
 def _load_model(device: str) -> torch.nn.Module:
-    model = BatteryGruModel(
-        input_size=INPUT_SIZE,
-        conditions_size=CONDITIONS_SIZE,
+    model = GeneratorGru(
+        input_features=INPUT_FEATURES,
+        n_conditions=N_CONDITIONS,
         hidden_size=HIDDEN_SIZE,
-        output_size=OUTPUT_SIZE,
+        output_features=OUTPUT_FEATURES,
         n_layers=N_LAYERS,
         dropout=0.0,
+        noise_dim=NOISE_DIM,
+        condition_dim=CONDITION_DIM,
     ).to(device)
 
     if _CHECKPOINT.exists():
@@ -122,7 +122,6 @@ def _load_model(device: str) -> torch.nn.Module:
 def run_inference(
     model: torch.nn.Module,
     X_windows: list[np.ndarray],
-    start_values: np.ndarray,
     conditions: np.ndarray,
     device: str,
 ) -> list[np.ndarray]:
@@ -131,12 +130,7 @@ def run_inference(
 
     # (1, conditions_size)
     conditions_tensor = (
-        torch.tensor([conditions], dtype=torch.float32).unsqueeze(0).to(device)
-    )
-
-    # (1, output_size)
-    start_values_tensor = (
-        torch.tensor(start_values, dtype=torch.float32).unsqueeze(0).to(device)
+        torch.tensor(conditions, dtype=torch.float32).view(1, 1).to(device)
     )
 
     for i in range(len(X_windows)):
@@ -148,11 +142,11 @@ def run_inference(
 
         # 1: (1, window_length, output_size)
         # 2: (n_layers, 1, hidden_size)
+        batch_size = X_tensor.size(0)
+        noise = torch.randn([batch_size, NOISE_DIM], device=device)
         prediction_tensor, hidden_state = model(
-            X_tensor, conditions_tensor, start_values_tensor, hidden_state
+            X_tensor, conditions_tensor, noise, hidden_state
         )
-
-        start_values_tensor = prediction_tensor[:, -1, :]
 
         prediction = prediction_tensor.squeeze(0).cpu().numpy()
         predictions.append(prediction)
@@ -167,8 +161,9 @@ def _plot(
     stem: str,
     n_windows: int,
 ) -> None:
-    voltage_true = y_true[:, 0]
-    temperature_true = y_true[:, 1]
+    voltage_true = _destandardize(y_true[:, 0], stats["U"])
+    temperature_true = _destandardize(y_true[:, 1], stats["Temp[1]"])
+
     voltage_prediction = _destandardize(y_prediction[:, 0], stats["U"])
     temperature_prediction = _destandardize(y_prediction[:, 1], stats["Temp[1]"])
 
@@ -214,7 +209,7 @@ def _plot(
     )
 
     _PLOTS_PATH.mkdir(parents=True, exist_ok=True)
-    out = _PLOTS_PATH / f"infer_{stem}.png"
+    out = _PLOTS_PATH / "infer.png"
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"Plot saved → {out}")
@@ -288,8 +283,7 @@ def main() -> None:
 
     model = _load_model(device)
     conditions = np.array(soh)
-    start_values = y_windows[0][0, :]
-    pred_windows = run_inference(model, X_windows, start_values, conditions, device)
+    pred_windows = run_inference(model, X_windows, conditions, device)
 
     # (total_steps, 2)
     y_true = np.concatenate(y_windows, axis=0)

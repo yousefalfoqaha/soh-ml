@@ -7,7 +7,7 @@ from voltgan.pipeline.base import PipelineHandler, SampleContext
 class StatsEnrichHandler(PipelineHandler):
     @property
     def order(self) -> int:
-        return 3
+        return 5
 
     def handle(self, context: SampleContext) -> SampleContext:
         hdf_path = context.output_path
@@ -31,5 +31,5 @@ class StatsEnrichHandler(PipelineHandler):
 
             f.attrs["total_rows"] = total_rows
 
-        print(f"  Stats enriched: {hdf_path.name}")
+        print(f"Stats enriched.")
         return context

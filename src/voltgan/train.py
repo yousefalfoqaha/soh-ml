@@ -3,11 +3,12 @@ from typing import cast
 
 import matplotlib
 
+from voltgan.models import DiscriminatorTransformer
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import numpy as np
 import torch
 import torch._inductor.config as inductor_config
+from torch.optim.lr_scheduler import LRScheduler
 
 inductor_config.max_autotune_gemm = False
 import signal
@@ -18,7 +19,7 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 from voltgan.data import McusDataset, Standardizer
-from voltgan.models import BatteryGruModel
+from voltgan.models import GeneratorGru
 from voltgan.pipeline import (
     ChannelValidationHandler,
     HdfConvertHandler,
@@ -36,32 +37,34 @@ DATA_PATH = _PROJECT_ROOT / "dataset"
 PLOTS_PATH = _PROJECT_ROOT / "plots"
 CHECKPOINT_PATH = _PROJECT_ROOT / "model.pt"
 
-RASTER_FREQUENCY = 0.1
-CHANNELS = ["U", "I", "Temp[1]", "ClimaTemp"]
-PLOT_EPOCHS = {1, 10, 20, 30}
+NOMINAL_CAPACITY = 18000.0
+RASTER_FREQUENCY = 2
+CHANNELS = ["U", "I", "Temp[1]", "ClimaTemp", "Q"]
 
 RANDOM_SEED = 42
 
-N_EPOCHS = 30
-BATCH_SIZE = 32
-LEARNING_RATE = 0.0025
+N_EPOCHS = 100
+BATCH_SIZE = 64
+LEARNING_RATE = 0.0005
 
-WINDOW_LENGTH = 8000
-STRIDE = 4000
+WINDOW_LENGTH = 500
+STRIDE = 500
 
 # transformer
-EMBEDDING_DIM = 128
-FEEDFORWARD_DIM = 512
-N_HEADS = 8
+EMBEDDING_DIM = 64
+FEEDFORWARD_DIM = 256
+N_HEADS = 4
 N_BLOCKS = 2
 DROPOUT = 0.1
 
 # gru
-INPUT_SIZE = 2
-CONDITIONS_SIZE = 1
-HIDDEN_SIZE = 128
-OUTPUT_SIZE = 2
+INPUT_FEATURES = 2
+N_CONDITIONS = 1
+HIDDEN_SIZE = 512
+OUTPUT_FEATURES = 2
 N_LAYERS = 2
+NOISE_DIM = 32
+CONDITION_DIM = 8
 
 _interrupted = False
 
@@ -81,7 +84,7 @@ def _worker_init(worker_id):
 
 _PIPELINE_HANDLERS = [
     ChannelValidationHandler(CHANNELS),
-    SohHandler(nominal_charge=18000.0, raster=RASTER_FREQUENCY),
+    SohHandler(nominal_capacity=NOMINAL_CAPACITY, raster=RASTER_FREQUENCY),
     HdfConvertHandler(DATA_PATH, RASTER_FREQUENCY, CHANNELS),
     StatsEnrichHandler(),
 ]
@@ -136,176 +139,203 @@ def main():
         worker_init_fn=_worker_init,
     )
 
-    model = BatteryGruModel(
-        input_size=INPUT_SIZE,
-        conditions_size=CONDITIONS_SIZE,
+    generator = GeneratorGru(
+        input_features=INPUT_FEATURES,
+        n_conditions=N_CONDITIONS,
         hidden_size=HIDDEN_SIZE,
-        output_size=OUTPUT_SIZE,
+        output_features=OUTPUT_FEATURES,
         n_layers=N_LAYERS,
         dropout=DROPOUT,
+        noise_dim=NOISE_DIM,
+        condition_dim=CONDITION_DIM,
     ).to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    criterion = torch.nn.HuberLoss()
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
+    discriminator = DiscriminatorTransformer(
+        input_features=INPUT_FEATURES + OUTPUT_FEATURES,
+        n_conditions=N_CONDITIONS,
+        embedding_dim=EMBEDDING_DIM,
+        n_heads=N_HEADS,
+        n_blocks=N_BLOCKS,
+        feedforward_dim=FEEDFORWARD_DIM,
+        dropout=DROPOUT,
+        max_length=WINDOW_LENGTH,
+    ).to(device)
+
+    criterion = torch.nn.BCEWithLogitsLoss()
+    scaler = GradScaler()
+
+    generator_optimizer = torch.optim.Adam(generator.parameters(), lr=LEARNING_RATE)
+    generator_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        generator_optimizer,
         T_max=N_EPOCHS,
         eta_min=1e-5,
     )
-    scaler = GradScaler()
-    compiled_model = cast(BatteryGruModel, torch.compile(model))
+    compiled_generator = cast(GeneratorGru, torch.compile(generator))
+
+    discriminator_optimizer = torch.optim.Adam(
+        discriminator.parameters(), lr=LEARNING_RATE
+    )
+    discriminator_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        discriminator_optimizer,
+        T_max=N_EPOCHS,
+        eta_min=1e-5,
+    )
+    compiled_discriminator = cast(
+        DiscriminatorTransformer, torch.compile(discriminator)
+    )
 
     train_and_validate(
-        compiled_model,
-        optimizer,
+        # generator
+        compiled_generator,
+        generator_optimizer,
+        generator_scheduler,
+        # discriminator
+        compiled_discriminator,
+        discriminator_optimizer,
+        discriminator_scheduler,
+        # shared
         criterion,
         training_loader,
         validation_loader,
-        scheduler,
         scaler,
         N_EPOCHS,
         device,
-        stats,
     )
 
-    torch.save(model.state_dict(), CHECKPOINT_PATH)
+    torch.save(generator.state_dict(), CHECKPOINT_PATH)
 
     print(f"Model saved → {CHECKPOINT_PATH}")
 
 
 def train_and_validate(
-    model: Module,
-    optimizer: Optimizer,
+    generator: GeneratorGru,
+    generator_optimizer: Optimizer,
+    generator_scheduler: LRScheduler,
+    discriminator: DiscriminatorTransformer,
+    discriminator_optimizer: Optimizer,
+    discriminator_scheduler: LRScheduler,
     criterion: Module,
     training_loader: DataLoader,
     validation_loader: DataLoader,
-    scheduler,
     scaler: GradScaler,
     n_epochs: int,
     device: str,
-    stats: dict,
 ) -> None:
     print(
         f"Train batches: {len(training_loader)} | Validation batches: {len(validation_loader)}"
     )
     print(f"Starting training for {n_epochs} epochs...")
 
+    device_type = "cuda" if "cuda" in device else "cpu"
+    amp_dtype = torch.float16 if device_type == "cuda" else torch.bfloat16
+
     for epoch in range(n_epochs):
-        total_training_loss = 0.0
-        total_validation_loss = 0.0
+        total_discriminator_training_loss = 0.0
+        total_generator_training_loss = 0.0
+        total_discriminator_validation_loss = 0.0
+        total_generator_validation_loss = 0.0
 
-        model.train()
-        for X, conditions, y in training_loader:
-            X = X.to(device, non_blocking=True)
-            y = y.to(device, non_blocking=True)
+        generator.train()
+        discriminator.train()
+        for X_real, conditions, y_real in training_loader:
+            X_real = X_real.to(device, non_blocking=True)
+            y_real = y_real.to(device, non_blocking=True)
             conditions = conditions.to(device, non_blocking=True)
-            start_values = y[:, 0, :].to(device, non_blocking=True)
+            batch_size = X_real.size(0)
 
-            with autocast(device_type="cuda"):
-                y_prediction, _ = model(X, conditions, start_values)
-                loss = criterion(y_prediction, y)
+            # stage 1: train discriminator
+            discriminator_optimizer.zero_grad(set_to_none=True)
 
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
+            with autocast(device_type=device_type, dtype=amp_dtype):
+                y_prediction_real = discriminator(X_real, y_real, conditions)
+                ones = torch.ones_like(y_prediction_real, dtype=torch.float32)
+                loss_real = criterion(y_prediction_real, ones)
+
+                noise = torch.randn([batch_size, NOISE_DIM], device=device)
+                y_fake, _ = generator(X_real, conditions, noise)
+                y_fake = y_fake.detach()
+
+                y_prediction_fake = discriminator(X_real, y_fake, conditions)
+                zeros = torch.zeros_like(y_prediction_fake, dtype=torch.float32)
+                loss_fake = criterion(y_prediction_fake, zeros)
+
+                discriminator_loss = loss_real + loss_fake
+
+            scaler.scale(discriminator_loss).backward()
+            scaler.step(discriminator_optimizer)
+
+            total_discriminator_training_loss += discriminator_loss.item()
+
+            # stage 2: train generator
+            generator_optimizer.zero_grad(set_to_none=True)
+            discriminator_optimizer.zero_grad(set_to_none=True)
+
+            noise = torch.randn([batch_size, NOISE_DIM], device=device)
+
+            with autocast(device_type=device_type, dtype=amp_dtype):
+                y_fake, _ = generator(X_real, conditions, noise)
+
+                y_prediction_fake = discriminator(X_real, y_fake, conditions)
+                ones_generator = torch.ones_like(y_prediction_fake, dtype=torch.float32)
+                generator_loss = criterion(y_prediction_fake, ones_generator)
+
+            scaler.scale(generator_loss).backward()
+            scaler.step(generator_optimizer)
             scaler.update()
-            optimizer.zero_grad(set_to_none=True)
 
-            total_training_loss += loss.item()
+            total_generator_training_loss += generator_loss.item()
 
-        scheduler.step()
+        generator_scheduler.step()
+        discriminator_scheduler.step()
 
-        model.eval()
-        plotted = False
+        generator.eval()
+        discriminator.eval()
         with torch.no_grad():
-            for X, conditions, y in validation_loader:
-                X = X.to(device, non_blocking=True)
-                y = y.to(device, non_blocking=True)
-                start_values = y[:, 0, :].to(device, non_blocking=True)
+            for X_real, conditions, y_real in validation_loader:
+                X_real = X_real.to(device, non_blocking=True)
+                y_real = y_real.to(device, non_blocking=True)
                 conditions = conditions.to(device, non_blocking=True)
+                batch_size = X_real.size(0)
 
-                with autocast(device_type="cuda"):
-                    y_prediction, _ = model(X, conditions, start_values)
-                    loss = criterion(y_prediction, y)
+                with autocast(device_type=device_type, dtype=amp_dtype):
+                    y_prediction_real = discriminator(X_real, y_real, conditions)
+                    ones = torch.ones_like(y_prediction_real, dtype=torch.float32)
+                    validation_loss_real = criterion(y_prediction_real, ones)
 
-                total_validation_loss += loss.item()
+                    noise = torch.randn([batch_size, NOISE_DIM], device=device)
+                    y_fake, _ = generator(X_real, conditions, noise)
 
-                if epoch in PLOT_EPOCHS and not plotted:
-                    plot_battery_comparison(
-                        y[0, :, :].cpu().numpy(),
-                        y_prediction[0, :, :].cpu().numpy(),
-                        epoch,
-                        stats,
-                    )
-                    plotted = True
+                    y_prediction_fake = discriminator(X_real, y_fake, conditions)
+                    zeros = torch.zeros_like(y_prediction_fake, dtype=torch.float32)
+                    validation_loss_fake = criterion(y_prediction_fake, zeros)
 
-        mean_training_loss = total_training_loss / len(training_loader)
-        mean_validation_loss = total_validation_loss / len(validation_loader)
+                    ones_g_val = torch.ones_like(y_prediction_fake, dtype=torch.float32)
+                    validation_generator_loss = criterion(y_prediction_fake, ones_g_val)
+
+                total_discriminator_validation_loss += (
+                    validation_loss_real + validation_loss_fake
+                ).item()
+                total_generator_validation_loss += validation_generator_loss.item()
+
+        mean_discriminator_training = total_discriminator_training_loss / len(
+            training_loader
+        )
+        mean_generator_training = total_generator_training_loss / len(training_loader)
+        mean_discriminator_validation = total_discriminator_validation_loss / len(
+            validation_loader
+        )
+        mean_generator_validation = total_generator_validation_loss / len(
+            validation_loader
+        )
 
         print(
             f"Epoch {epoch + 1:02d}/{n_epochs} | "
-            f"Train Loss: {mean_training_loss:.5f} | "
-            f"Valid Loss: {mean_validation_loss:.5f}"
+            f"Train D Loss: {mean_discriminator_training:.5f} | Train G Loss: {mean_generator_training:.5f} || "
+            f"Valid D Loss: {mean_discriminator_validation:.5f} | Valid G Loss: {mean_generator_validation:.5f}"
         )
 
         if _interrupted:
             break
-
-
-def plot_battery_comparison(
-    y_true: np.ndarray, y_pred: np.ndarray, epoch: int, stats: dict
-) -> None:
-    u_stats = stats["U"]
-    t_stats = stats["Temp[1]"]
-
-    y_true_denorm = y_true.copy()
-    y_true_denorm[:, 0] = y_true[:, 0] * u_stats["standard_deviation"] + u_stats["mean"]
-    y_true_denorm[:, 1] = y_true[:, 1] * t_stats["standard_deviation"] + t_stats["mean"]
-
-    y_prediction_denorm = y_pred.copy()
-    y_prediction_denorm[:, 0] = (
-        y_pred[:, 0] * u_stats["standard_deviation"] + u_stats["mean"]
-    )
-    y_prediction_denorm[:, 1] = (
-        y_pred[:, 1] * t_stats["standard_deviation"] + t_stats["mean"]
-    )
-
-    fig, axs = plt.subplots(1, 2, figsize=(12, 5), layout="constrained")
-    timestamps = np.arange(y_true.shape[0])
-
-    axs[0].plot(timestamps, y_true_denorm[:, 0], color="black", label="True U")
-    axs[0].plot(
-        timestamps,
-        y_prediction_denorm[:, 0],
-        color="red",
-        linestyle="--",
-        label="Pred U",
-        alpha=0.8,
-    )
-    axs[0].set_title("Voltage Comparison")
-    axs[0].set_ylabel("Voltage (V)")
-    axs[0].set_xlabel("Time Steps (0.1s)")
-    axs[0].grid(True, alpha=0.3)
-    axs[0].legend()
-
-    axs[1].plot(timestamps, y_true_denorm[:, 1], color="darkred", label="True Temp")
-    axs[1].plot(
-        timestamps,
-        y_prediction_denorm[:, 1],
-        color="blue",
-        linestyle="--",
-        label="Pred Temp",
-        alpha=0.8,
-    )
-    axs[1].set_title("Temperature Comparison")
-    axs[1].set_ylabel("Temperature (°C)")
-    axs[1].set_xlabel("Time Steps (0.1s)")
-    axs[1].grid(True, alpha=0.3)
-    axs[1].legend()
-
-    fig.suptitle(f"Epoch {epoch} Results")
-    PLOTS_PATH.mkdir(parents=True, exist_ok=True)
-    fig.savefig(PLOTS_PATH / f"epoch_{epoch:02d}.png", dpi=150, bbox_inches="tight")
-    plt.close(fig)
 
 
 if __name__ == "__main__":

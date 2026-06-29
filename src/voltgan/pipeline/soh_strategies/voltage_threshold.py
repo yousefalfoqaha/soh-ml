@@ -21,7 +21,7 @@ class VoltageThresholdStrategy(SohStrategy):
         return True
 
     def calculate(
-        self, mdf: MDF, nominal_charge: float, raster: float, context: SampleContext
+        self, mdf: MDF, nominal_capacity: float, raster: float, context: SampleContext
     ) -> SampleContext:
         voltage_signal = _rasterized_voltage(mdf, raster)
         current_signal = _rasterized_current(mdf, raster)
@@ -45,7 +45,7 @@ class VoltageThresholdStrategy(SohStrategy):
             segment_current = current[peak_idx : trough_idx + 1]
             segment_time = timestamps[peak_idx : trough_idx + 1]
             integrated_charge = abs(float(np.trapezoid(segment_current, segment_time)))
-            soh = integrated_charge / nominal_charge
+            soh = integrated_charge / nominal_capacity
             if soh < self.MIN_SOH:
                 continue
             soh_values.append(soh)

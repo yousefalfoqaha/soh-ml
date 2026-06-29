@@ -11,5 +11,5 @@ class SohStrategy(ABC):
 
     @abstractmethod
     def calculate(
-        self, mdf: MDF, nominal_charge: float, raster: float, context: SampleContext
+        self, mdf: MDF, nominal_capacity: float, raster: float, context: SampleContext
     ) -> SampleContext: ...

@@ -6,7 +6,7 @@ from voltgan.pipeline.soh_strategies.base import SohStrategy
 from voltgan.pipeline.soh_strategies.utils import _rasterized_current
 
 
-class PulseIntegrationStrategy(SohStrategy):
+class PulseTestStrategy(SohStrategy):
     def can_handle(self, mdf: MDF) -> bool:
         return (
             "sgl_pulse" in mdf.channels_db
@@ -14,7 +14,7 @@ class PulseIntegrationStrategy(SohStrategy):
         )
 
     def calculate(
-        self, mdf: MDF, nominal_charge: float, raster: float, context: SampleContext
+        self, mdf: MDF, nominal_capacity: float, raster: float, context: SampleContext
     ) -> SampleContext:
         try:
             pulse_signal = mdf.get("sgl_pulse")
@@ -46,7 +46,7 @@ class PulseIntegrationStrategy(SohStrategy):
                 continue
             total_discharge += abs(float(np.trapezoid(current[mask], timestamps[mask])))
 
-        soh_file = min(total_discharge / nominal_charge, 1.0)
+        soh_file = min(total_discharge / nominal_capacity, 1.0)
         context.metadata["soh_file"] = soh_file
 
         return context

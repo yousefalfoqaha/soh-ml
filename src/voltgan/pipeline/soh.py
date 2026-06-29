@@ -2,23 +2,23 @@ from asammdf import MDF
 
 from voltgan.pipeline.base import PipelineHandler, SampleContext
 from voltgan.pipeline.soh_strategies import (
-    DischargeTimeMergeStrategy,
-    PulseIntegrationStrategy,
+    DischargeTimeStrategy,
+    PulseTestStrategy,
     SOHCStrategy,
     VoltageThresholdStrategy,
 )
 
 _STRATEGIES = [
-    DischargeTimeMergeStrategy(),
+    DischargeTimeStrategy(),
     SOHCStrategy(),
-    PulseIntegrationStrategy(),
+    PulseTestStrategy(),
     VoltageThresholdStrategy(),
 ]
 
 
 class SohHandler(PipelineHandler):
-    def __init__(self, nominal_charge: float = 18000.0, raster: float = 0.1):
-        self.nominal_charge = nominal_charge
+    def __init__(self, nominal_capacity: float = 18000.0, raster: float = 0.1):
+        self.nominal_capacity = nominal_capacity
         self.raster = raster
         self.strategies = _STRATEGIES
 
@@ -38,7 +38,7 @@ class SohHandler(PipelineHandler):
             for strategy in self.strategies:
                 if strategy.can_handle(mdf):
                     context = strategy.calculate(
-                        mdf, self.nominal_charge, self.raster, context
+                        mdf, self.nominal_capacity, self.raster, context
                     )
 
                     if context.interrupted:
@@ -46,11 +46,12 @@ class SohHandler(PipelineHandler):
 
                     print(
                         f"  SoH [{strategy.__class__.__name__}]: soh_file={context.metadata['soh_file']:.3f}"
-                        + f" in {mf4_path.name}"
                     )
-
+                    break
             else:
-                context.interrupted = "No SoH strategy was picked"
+                context.interrupted = f"No SoH strategy was picked {mf4_path.name}"
                 return context
         finally:
             mdf.close()
+
+        return context

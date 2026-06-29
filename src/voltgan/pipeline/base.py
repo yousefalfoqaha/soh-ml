@@ -1,3 +1,4 @@
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -52,11 +53,15 @@ class Pipeline:
                 continue
 
             context = SampleContext(source_path=mf4_path)
+            print(f"Processing {mf4_path.name}...")
 
             for handler in self.handlers:
                 context = handler.handle(context)
 
                 if context.interrupted:
+                    if context.output_path and context.output_path.is_file():
+                        os.remove(context.output_path)
+
                     raise ValueError(
                         f"[{handler.__class__.__name__}] {context.interrupted}"
                     )
