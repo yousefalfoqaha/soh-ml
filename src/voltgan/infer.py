@@ -25,9 +25,9 @@ WINDOW_LENGTH = 500
 STRIDE = 500
 
 # gru
-INPUT_FEATURES = 2
+INPUT_FEATURES = 3
 N_CONDITIONS = 1
-HIDDEN_SIZE = 512
+HIDDEN_SIZE = 128
 OUTPUT_FEATURES = 2
 N_LAYERS = 2
 
@@ -37,7 +37,7 @@ CONDITION_DIM = 8
 
 def _read_hdf(
     hdf_path: Path,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
     with h5py.File(hdf_path, "r") as f:
         group = f[hdf_path.name]
 
@@ -46,11 +46,12 @@ def _read_hdf(
 
         current = _load("I")
         climate_temperature = _load("ClimaTemp")
+        charge = _load("Q")
         voltage = _load("U")
         temperature = _load("Temp[1]")
         soh = float(f.attrs.get("soh_file", 1.0))
 
-    return current, climate_temperature, voltage, temperature, soh
+    return current, climate_temperature, charge, voltage, temperature, soh
 
 
 def _standardize(arr: np.ndarray, s: dict) -> np.ndarray:
@@ -64,6 +65,7 @@ def _destandardize(arr: np.ndarray, s: dict) -> np.ndarray:
 def _make_windows(
     current: np.ndarray,
     climate_temperature: np.ndarray,
+    charge: np.ndarray,
     voltage: np.ndarray,
     temperature: np.ndarray,
     stats: dict,
@@ -80,10 +82,10 @@ def _make_windows(
     start = 0
     while start + window_length <= len(current):
         end = start + window_length
-        # X only contains the exogenous physical forces now
         X_windows.append(
             np.stack(
-                [current[start:end], climate_temperature[start:end]], axis=1
+                [current[start:end], climate_temperature[start:end], charge[start:end]],
+                axis=1,
             ).astype(np.float32)
         )
         y_windows.append(
@@ -98,7 +100,6 @@ def _make_windows(
 
 def _load_model(device: str) -> torch.nn.Module:
     model = GeneratorGru(
-        input_features=INPUT_FEATURES,
         n_conditions=N_CONDITIONS,
         hidden_size=HIDDEN_SIZE,
         output_features=OUTPUT_FEATURES,
@@ -121,7 +122,7 @@ def _load_model(device: str) -> torch.nn.Module:
 @torch.no_grad()
 def run_inference(
     model: torch.nn.Module,
-    X_windows: list[np.ndarray],
+    y_windows: list[np.ndarray],
     conditions: np.ndarray,
     device: str,
 ) -> list[np.ndarray]:
@@ -133,20 +134,19 @@ def run_inference(
         torch.tensor(conditions, dtype=torch.float32).view(1, 1).to(device)
     )
 
-    for i in range(len(X_windows)):
+    for i in range(len(y_windows)):
         # (window_length, input_size)
-        X = X_windows[i]
+        y = y_windows[i]
 
         # (1, window_length, input_size)
-        X_tensor = torch.tensor(X, dtype=torch.float32).unsqueeze(0).to(device)
+        y_tensor = torch.tensor(y, dtype=torch.float32).unsqueeze(0).to(device)
 
         # 1: (1, window_length, output_size)
         # 2: (n_layers, 1, hidden_size)
-        batch_size = X_tensor.size(0)
-        noise = torch.randn([batch_size, NOISE_DIM], device=device)
-        prediction_tensor, hidden_state = model(
-            X_tensor, conditions_tensor, noise, hidden_state
-        )
+        batch_size = y_tensor.size(0)
+        sequence_length = y_tensor.size(1)
+        noise = torch.randn([batch_size, sequence_length, NOISE_DIM], device=device)
+        prediction_tensor, hidden_state = model(conditions_tensor, noise, hidden_state)
 
         prediction = prediction_tensor.squeeze(0).cpu().numpy()
         predictions.append(prediction)
@@ -250,7 +250,9 @@ def main() -> None:
         raise FileNotFoundError(f"HDF file not found: {hdf_path}")
 
     print(f"Reading {hdf_path} …")
-    current, climate_temperature, voltage, temperature, soh = _read_hdf(hdf_path)
+    current, climate_temperature, charge, voltage, temperature, soh = _read_hdf(
+        hdf_path
+    )
     print(
         f"  {len(current):,} samples  |  SoH={soh:.4f}  |  "
         f"U ∈ [{voltage.min():.2f}, {voltage.max():.2f}] V  |  "
@@ -268,6 +270,7 @@ def main() -> None:
     X_windows, y_windows = _make_windows(
         current,
         climate_temperature,
+        charge,
         voltage,
         temperature,
         stats,
@@ -283,9 +286,8 @@ def main() -> None:
 
     model = _load_model(device)
     conditions = np.array(soh)
-    pred_windows = run_inference(model, X_windows, conditions, device)
+    pred_windows = run_inference(model, y_windows, conditions, device)
 
-    # (total_steps, 2)
     y_true = np.concatenate(y_windows, axis=0)
     y_prediction = np.concatenate(pred_windows, axis=0)
 

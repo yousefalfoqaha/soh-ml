@@ -32,6 +32,7 @@ class McuSample:
                     cast(h5py.Dataset, group["I"])[:],
                     cast(h5py.Dataset, group["Temp[1]"])[:],
                     cast(h5py.Dataset, group["ClimaTemp"])[:],
+                    cast(h5py.Dataset, group["Q"])[:],
                 ]
             ).T.astype(np.float32)
 

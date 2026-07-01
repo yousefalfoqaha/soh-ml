@@ -24,6 +24,7 @@ class McusDataset(torch.utils.data.Dataset):
                 stats["I"]["mean"],
                 stats["Temp[1]"]["mean"],
                 stats["ClimaTemp"]["mean"],
+                stats["Q"]["mean"],
             ],
             dtype=np.float32,
         )
@@ -33,6 +34,7 @@ class McusDataset(torch.utils.data.Dataset):
                 stats["I"]["standard_deviation"],
                 stats["Temp[1]"]["standard_deviation"],
                 stats["ClimaTemp"]["standard_deviation"],
+                stats["Q"]["standard_deviation"],
             ],
             dtype=np.float32,
         )
@@ -65,12 +67,13 @@ class McusDataset(torch.utils.data.Dataset):
 
         # (window_length,)
         voltage = torch.from_numpy(window[:, 0]).float()
-        current = torch.from_numpy(window[:, 1]).float()
         temperature = torch.from_numpy(window[:, 2]).float()
+        current = torch.from_numpy(window[:, 1]).float()
         ambient_temperature = torch.from_numpy(window[:, 3]).float()
+        charge = torch.from_numpy(window[:, 4]).float()
 
-        # (window_length, 2)
-        X = torch.stack([current, ambient_temperature], dim=1)
+        # (window_length, 3)
+        X = torch.stack([current, ambient_temperature, charge], dim=1)
 
         # (1,)
         conditions = torch.tensor([sample.soh], dtype=torch.float32)
@@ -78,4 +81,4 @@ class McusDataset(torch.utils.data.Dataset):
         # (window_length, 2)
         y = torch.stack([voltage, temperature], dim=1)
 
-        return X, conditions, y
+        return conditions, y

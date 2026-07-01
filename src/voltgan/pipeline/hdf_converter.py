@@ -17,50 +17,56 @@ class HdfConvertHandler(PipelineHandler):
 
     @property
     def order(self) -> int:
-        return 2
+        return 3
 
     def handle(self, context: SampleContext) -> SampleContext:
+        instances = context.metadata.get("instances", [])
+        if len(instances) == 0:
+            return context
+
         mf4_path = context.source_path
         relative_path = mf4_path.relative_to(self.mf4_root)
-        hdf_path = (self.hdf_root / relative_path).with_suffix(".hdf")
-        context.output_path = hdf_path
 
-        if hdf_path.exists():
+        if len(instances) == 1:
+            base_hdf_path = (self.hdf_root / relative_path).with_suffix(".hdf")
+        else:
+            base_hdf_path = (self.hdf_root / relative_path).with_suffix("")
+
+        context.output_path = base_hdf_path
+
+        target_files = []
+        if len(instances) == 1:
+            base_hdf_path.parent.mkdir(parents=True, exist_ok=True)
+            target_files.append(base_hdf_path)
+        else:
+            base_hdf_path.mkdir(parents=True, exist_ok=True)
+            for i in range(1, len(instances) + 1):
+                target_files.append(base_hdf_path / f"{i}.hdf")
+
+        if all(target.exists() for target in target_files):
             return context
 
-        hdf_path.parent.mkdir(parents=True, exist_ok=True)
         print(f"Converting to HDF...")
-
         mdf = MDF(name=mf4_path, channels=self.channels)
         try:
-            mdf.export(
-                fmt="hdf5",
-                filename=hdf_path.name,
-                single_time_base=True,
-                raster=self.raster,
-                time_from_zero=True,
-            )
-            os.rename(hdf_path.name, hdf_path)
+            for instance, target_file in zip(instances, target_files):
+                if target_file.exists():
+                    continue
+
+                slice_mdf = mdf.cut(start=instance[0], stop=instance[1])
+                slice_mdf.export(
+                    fmt="hdf5",
+                    filename=target_file.name,
+                    single_time_base=True,
+                    raster=self.raster,
+                    time_from_zero=True,
+                )
+
+                os.rename(target_file.name, target_file)
+
+                with h5py.File(target_file, "a") as f:
+                    f.attrs["soh_file"] = instance[2]
         finally:
             mdf.close()
-
-        self._write_soh_metadata(hdf_path, context)
-
-        return context
-
-    def _write_soh_metadata(
-        self, hdf_path: Path, context: SampleContext
-    ) -> SampleContext:
-        if "soh_file" not in context.metadata:
-            context.interrupted = "SoH not found in pipeline context"
-            return context
-
-        soh_file = context.metadata.get("soh_file", 0.0)
-        with h5py.File(hdf_path, "a") as f:
-            if "soh_values" in f:
-                del f["soh_values"]
-            if "soh_timestamps" in f:
-                del f["soh_timestamps"]
-            f.attrs["soh_file"] = soh_file
 
         return context

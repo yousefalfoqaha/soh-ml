@@ -10,6 +10,7 @@ class SampleContext:
     source_path: Path
     output_path: Path | None = None
     interrupted: str | None = None
+    skipped: bool = False
     metadata: dict = field(default_factory=dict)
 
 

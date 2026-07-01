@@ -22,6 +22,7 @@ from voltgan.data import McusDataset, Standardizer
 from voltgan.models import GeneratorGru
 from voltgan.pipeline import (
     ChannelValidationHandler,
+    ExtractDischargePeriodsHandler,
     HdfConvertHandler,
     Pipeline,
     SohHandler,
@@ -38,8 +39,8 @@ PLOTS_PATH = _PROJECT_ROOT / "plots"
 CHECKPOINT_PATH = _PROJECT_ROOT / "model.pt"
 
 NOMINAL_CAPACITY = 18000.0
-RASTER_FREQUENCY = 2
-CHANNELS = ["U", "I", "Temp[1]", "ClimaTemp", "Q"]
+RASTER_FREQUENCY = 1.5
+CHANNELS = ["U", "I", "Temp[1]", "ClimaTemp"]
 
 RANDOM_SEED = 42
 
@@ -51,16 +52,16 @@ WINDOW_LENGTH = 500
 STRIDE = 500
 
 # transformer
-EMBEDDING_DIM = 64
-FEEDFORWARD_DIM = 256
+EMBEDDING_DIM = 128
+FEEDFORWARD_DIM = 512
 N_HEADS = 4
 N_BLOCKS = 2
 DROPOUT = 0.1
 
 # gru
-INPUT_FEATURES = 2
+INPUT_FEATURES = 3
 N_CONDITIONS = 1
-HIDDEN_SIZE = 512
+HIDDEN_SIZE = 128
 OUTPUT_FEATURES = 2
 N_LAYERS = 2
 NOISE_DIM = 32
@@ -84,6 +85,7 @@ def _worker_init(worker_id):
 
 _PIPELINE_HANDLERS = [
     ChannelValidationHandler(CHANNELS),
+    ExtractDischargePeriodsHandler(CHANNELS),
     SohHandler(nominal_capacity=NOMINAL_CAPACITY, raster=RASTER_FREQUENCY),
     HdfConvertHandler(DATA_PATH, RASTER_FREQUENCY, CHANNELS),
     StatsEnrichHandler(),
@@ -140,7 +142,6 @@ def main():
     )
 
     generator = GeneratorGru(
-        input_features=INPUT_FEATURES,
         n_conditions=N_CONDITIONS,
         hidden_size=HIDDEN_SIZE,
         output_features=OUTPUT_FEATURES,
@@ -151,7 +152,7 @@ def main():
     ).to(device)
 
     discriminator = DiscriminatorTransformer(
-        input_features=INPUT_FEATURES + OUTPUT_FEATURES,
+        input_features=OUTPUT_FEATURES,
         n_conditions=N_CONDITIONS,
         embedding_dim=EMBEDDING_DIM,
         n_heads=N_HEADS,
@@ -237,25 +238,27 @@ def train_and_validate(
 
         generator.train()
         discriminator.train()
-        for X_real, conditions, y_real in training_loader:
-            X_real = X_real.to(device, non_blocking=True)
+        for conditions, y_real in training_loader:
             y_real = y_real.to(device, non_blocking=True)
             conditions = conditions.to(device, non_blocking=True)
-            batch_size = X_real.size(0)
+            batch_size = y_real.size(0)
+            sequence_length = y_real.size(1)
 
             # stage 1: train discriminator
             discriminator_optimizer.zero_grad(set_to_none=True)
 
             with autocast(device_type=device_type, dtype=amp_dtype):
-                y_prediction_real = discriminator(X_real, y_real, conditions)
+                y_prediction_real = discriminator(y_real, conditions)
                 ones = torch.ones_like(y_prediction_real, dtype=torch.float32)
                 loss_real = criterion(y_prediction_real, ones)
 
-                noise = torch.randn([batch_size, NOISE_DIM], device=device)
-                y_fake, _ = generator(X_real, conditions, noise)
+                noise = torch.randn(
+                    [batch_size, sequence_length, NOISE_DIM], device=device
+                )
+                y_fake, _ = generator(conditions, noise)
                 y_fake = y_fake.detach()
 
-                y_prediction_fake = discriminator(X_real, y_fake, conditions)
+                y_prediction_fake = discriminator(y_fake, conditions)
                 zeros = torch.zeros_like(y_prediction_fake, dtype=torch.float32)
                 loss_fake = criterion(y_prediction_fake, zeros)
 
@@ -270,12 +273,12 @@ def train_and_validate(
             generator_optimizer.zero_grad(set_to_none=True)
             discriminator_optimizer.zero_grad(set_to_none=True)
 
-            noise = torch.randn([batch_size, NOISE_DIM], device=device)
+            noise = torch.randn([batch_size, sequence_length, NOISE_DIM], device=device)
 
             with autocast(device_type=device_type, dtype=amp_dtype):
-                y_fake, _ = generator(X_real, conditions, noise)
+                y_fake, _ = generator(conditions, noise)
 
-                y_prediction_fake = discriminator(X_real, y_fake, conditions)
+                y_prediction_fake = discriminator(y_fake, conditions)
                 ones_generator = torch.ones_like(y_prediction_fake, dtype=torch.float32)
                 generator_loss = criterion(y_prediction_fake, ones_generator)
 
@@ -291,21 +294,23 @@ def train_and_validate(
         generator.eval()
         discriminator.eval()
         with torch.no_grad():
-            for X_real, conditions, y_real in validation_loader:
-                X_real = X_real.to(device, non_blocking=True)
+            for conditions, y_real in validation_loader:
                 y_real = y_real.to(device, non_blocking=True)
                 conditions = conditions.to(device, non_blocking=True)
-                batch_size = X_real.size(0)
+                batch_size = y_real.size(0)
+                sequence_length = y_real.size(1)
 
                 with autocast(device_type=device_type, dtype=amp_dtype):
-                    y_prediction_real = discriminator(X_real, y_real, conditions)
+                    y_prediction_real = discriminator(y_real, conditions)
                     ones = torch.ones_like(y_prediction_real, dtype=torch.float32)
                     validation_loss_real = criterion(y_prediction_real, ones)
 
-                    noise = torch.randn([batch_size, NOISE_DIM], device=device)
-                    y_fake, _ = generator(X_real, conditions, noise)
+                    noise = torch.randn(
+                        [batch_size, sequence_length, NOISE_DIM], device=device
+                    )
+                    y_fake, _ = generator(conditions, noise)
 
-                    y_prediction_fake = discriminator(X_real, y_fake, conditions)
+                    y_prediction_fake = discriminator(y_fake, conditions)
                     zeros = torch.zeros_like(y_prediction_fake, dtype=torch.float32)
                     validation_loss_fake = criterion(y_prediction_fake, zeros)
 

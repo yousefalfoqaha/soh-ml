@@ -1,57 +1,42 @@
+import numpy as np
 from asammdf import MDF
 
 from voltgan.pipeline.base import PipelineHandler, SampleContext
-from voltgan.pipeline.soh_strategies import (
-    DischargeTimeStrategy,
-    PulseTestStrategy,
-    SOHCStrategy,
-    VoltageThresholdStrategy,
-)
-
-_STRATEGIES = [
-    DischargeTimeStrategy(),
-    SOHCStrategy(),
-    PulseTestStrategy(),
-    VoltageThresholdStrategy(),
-]
 
 
 class SohHandler(PipelineHandler):
-    def __init__(self, nominal_capacity: float = 18000.0, raster: float = 0.1):
+    def __init__(self, nominal_capacity: float, raster: float):
         self.nominal_capacity = nominal_capacity
         self.raster = raster
-        self.strategies = _STRATEGIES
 
     @property
     def order(self) -> int:
-        return 1
+        return 2
 
     def handle(self, context: SampleContext) -> SampleContext:
-        mf4_path = context.source_path
-        try:
-            mdf = MDF(name=mf4_path)
-        except Exception:
-            context.interrupted = f"cannot open mf4: {mf4_path}"
+        instances = context.metadata.get("instances")
+        if not instances:
             return context
 
-        try:
-            for strategy in self.strategies:
-                if strategy.can_handle(mdf):
-                    context = strategy.calculate(
-                        mdf, self.nominal_capacity, self.raster, context
-                    )
+        mdf = MDF(name=context.source_path, channels=["I"])
+        current_signal = mdf.get("I", raster=self.raster)
+        current = current_signal.samples.astype(np.float32)
+        timestamps = current_signal.timestamps.astype(np.float32)
 
-                    if context.interrupted:
-                        return context
+        print(context.metadata["instances"])
+        instances_with_soh = []
+        for start_t, end_t in instances:
+            mask = (timestamps >= start_t) & (timestamps <= end_t)
+            if not np.any(mask):
+                continue
 
-                    print(
-                        f"  SoH [{strategy.__class__.__name__}]: soh_file={context.metadata['soh_file']:.3f}"
-                    )
-                    break
-            else:
-                context.interrupted = f"No SoH strategy was picked {mf4_path.name}"
-                return context
-        finally:
-            mdf.close()
+            integrated = abs(float(np.trapezoid(current[mask], timestamps[mask])))
+            soh = min(integrated / self.nominal_capacity, 1.0)
+
+            print(f"Calculated SoH: {soh}")
+
+            instances_with_soh.append((start_t, end_t, soh))
+
+        context.metadata["instances"] = instances_with_soh
 
         return context

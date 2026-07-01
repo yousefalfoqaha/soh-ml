@@ -1,4 +1,3 @@
-import torch
 from torch import nn
 
 from voltgan.models.condition_encoding import ConditionEncoding
@@ -77,13 +76,10 @@ class DiscriminatorTransformer(nn.Module):
     # X:          (batch_size, sequence_length, X_features)
     # y:          (batch_size, sequence_length, y_features)
     # conditions: (batch_size, condition_size)
-    def forward(self, X, y, conditions):
-
-        # (batch_size, sequence_length, input_features)
-        input_signal = torch.cat([X, y], dim=2)
+    def forward(self, y, conditions):
 
         # (batch_size, sequence_length, embedding_dim)
-        contextual_embeddings = self.input_signal_embedding(input_signal)
+        contextual_embeddings = self.input_signal_embedding(y)
         contextual_embeddings = self.pos_encoding(contextual_embeddings)
         contextual_embeddings = self.condition_encoding(
             contextual_embeddings, conditions
