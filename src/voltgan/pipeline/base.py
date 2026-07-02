@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Generator
 
+from asammdf import MDF
+
 
 @dataclass
 class SampleContext:
@@ -12,13 +14,13 @@ class SampleContext:
     interrupted: str | None = None
     skipped: bool = False
     metadata: dict = field(default_factory=dict)
+    mdf: "MDF" = MDF()
 
 
 class PipelineHandler(ABC):
     @property
     @abstractmethod
     def order(self) -> int: ...
-
     @abstractmethod
     def handle(self, context: SampleContext) -> SampleContext: ...
 
@@ -41,7 +43,6 @@ class Pipeline:
     def __init__(self, data_path: Path, handlers: list[PipelineHandler]):
         self.data_path = data_path
         self.handlers = sorted(handlers, key=lambda h: h.order)
-
         self.mf4_root = data_path / "mf4"
         self.hdf_root = data_path / "hdf"
 
@@ -54,15 +55,18 @@ class Pipeline:
                 continue
 
             context = SampleContext(source_path=mf4_path)
+
             print(f"Processing {mf4_path.name}...")
 
-            for handler in self.handlers:
-                context = handler.handle(context)
+            try:
+                for handler in self.handlers:
+                    context = handler.handle(context)
+                    if context.interrupted:
+                        if context.output_path and context.output_path.is_file():
+                            os.remove(context.output_path)
 
-                if context.interrupted:
-                    if context.output_path and context.output_path.is_file():
-                        os.remove(context.output_path)
-
-                    raise ValueError(
-                        f"[{handler.__class__.__name__}] {context.interrupted}"
-                    )
+                        raise ValueError(
+                            f"[{handler.__class__.__name__}] {context.interrupted}"
+                        )
+            finally:
+                context.mdf.close()

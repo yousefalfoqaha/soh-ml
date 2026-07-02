@@ -24,7 +24,6 @@ class McusDataset(torch.utils.data.Dataset):
                 stats["I"]["mean"],
                 stats["Temp[1]"]["mean"],
                 stats["ClimaTemp"]["mean"],
-                stats["Q"]["mean"],
             ],
             dtype=np.float32,
         )
@@ -34,7 +33,6 @@ class McusDataset(torch.utils.data.Dataset):
                 stats["I"]["standard_deviation"],
                 stats["Temp[1]"]["standard_deviation"],
                 stats["ClimaTemp"]["standard_deviation"],
-                stats["Q"]["standard_deviation"],
             ],
             dtype=np.float32,
         )

@@ -4,6 +4,7 @@ from typing import cast
 import matplotlib
 
 from voltgan.models import DiscriminatorTransformer
+from voltgan.pipeline.ambient_temperature import AmbientTemperatureHandler
 
 matplotlib.use("Agg")
 import torch
@@ -39,8 +40,8 @@ PLOTS_PATH = _PROJECT_ROOT / "plots"
 CHECKPOINT_PATH = _PROJECT_ROOT / "model.pt"
 
 NOMINAL_CAPACITY = 18000.0
-RASTER_FREQUENCY = 1.5
-CHANNELS = ["U", "I", "Temp[1]", "ClimaTemp"]
+RASTER_FREQUENCY = 1
+CHANNELS = ["U", "I", "Temp[1]"]
 
 RANDOM_SEED = 42
 
@@ -84,10 +85,11 @@ def _worker_init(worker_id):
 
 
 _PIPELINE_HANDLERS = [
-    ChannelValidationHandler(CHANNELS),
-    ExtractDischargePeriodsHandler(CHANNELS),
-    SohHandler(nominal_capacity=NOMINAL_CAPACITY, raster=RASTER_FREQUENCY),
-    HdfConvertHandler(DATA_PATH, RASTER_FREQUENCY, CHANNELS),
+    ChannelValidationHandler(CHANNELS, "ClimaTemp"),
+    ExtractDischargePeriodsHandler(),
+    SohHandler(nominal_capacity=NOMINAL_CAPACITY),
+    AmbientTemperatureHandler(),
+    HdfConvertHandler(DATA_PATH, RASTER_FREQUENCY),
     StatsEnrichHandler(),
 ]
 

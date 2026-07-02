@@ -1,3 +1,4 @@
+from voltgan.pipeline.ambient_temperature import AmbientTemperatureHandler
 from voltgan.pipeline.base import Pipeline, PipelineHandler, SampleContext, discover
 from voltgan.pipeline.channel_validation import ChannelValidationHandler
 from voltgan.pipeline.extract_discharge_periods import ExtractDischargePeriodsHandler

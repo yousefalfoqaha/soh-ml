@@ -9,14 +9,15 @@ from voltgan.pipeline.base import PipelineHandler, SampleContext
 class StatsEnrichHandler(PipelineHandler):
     @property
     def order(self) -> int:
-        return 4
+        return 5
 
     def handle(self, context: SampleContext) -> SampleContext:
         instances = context.metadata.get("instances")
+        output_path = context.output_path
+
         if not instances:
             return context
 
-        output_path = context.output_path
         if output_path is None:
             context.interrupted = "no output path"
             return context
