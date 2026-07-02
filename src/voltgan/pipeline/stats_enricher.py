@@ -46,13 +46,16 @@ class StatsEnrichHandler(PipelineHandler):
             total_rows = None
             for channel in group.keys():
                 dataset = group[channel]
-                assert isinstance(dataset, h5py.Dataset)
-                if total_rows is None:
-                    total_rows = len(dataset)
+
+                if not isinstance(dataset, h5py.Dataset):
+                    continue
+
+                total_rows = len(dataset)
                 data = dataset[:]
 
                 f.attrs[f"{channel}_mean"] = float(np.mean(data))
                 f.attrs[f"{channel}_m2"] = float(np.var(data) * total_rows)
 
-            if total_rows is not None:
-                f.attrs["total_rows"] = total_rows
+            f.attrs["total_rows"] = total_rows
+            f.attrs["ambient_temperature_mean"] = f.attrs["ambient_temperature"]
+            f.attrs["ambient_temperature_m2"] = 0.0

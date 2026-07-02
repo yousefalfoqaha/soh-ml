@@ -19,23 +19,23 @@ class Standardizer:
         for hdf_path in discover(data_path, mcus, (".hdf",)):
             with h5py.File(hdf_path, "r") as f:
                 n_rows = int(f.attrs.get("total_rows", 0))
-                if n_rows == 0:
-                    continue
 
                 total_rows += n_rows
 
                 group = f[hdf_path.name]
                 assert isinstance(group, h5py.Group)
 
+                keys_to_process = []
                 for key in group.keys():
                     if key.startswith("soh_"):
                         continue
 
-                    dataset = group[key]
+                    if isinstance(group[key], h5py.Dataset):
+                        keys_to_process.append(key)
 
-                    if not isinstance(dataset, h5py.Dataset):
-                        continue
+                keys_to_process.append("ambient_temperature")
 
+                for key in keys_to_process:
                     mean = float(f.attrs.get(f"{key}_mean", 0.0))
                     m2 = float(f.attrs.get(f"{key}_m2", 0.0))
 
