@@ -10,6 +10,7 @@ from voltgan.pipeline.base import discover
 class Standardizer:
     def __init__(self, data_path: Path):
         self.data_path = data_path
+        self.stats = {}
 
     def compute(self, mcus: list[str]) -> dict[str, dict[str, float]]:
         channel_stats: dict[str, dict[str, float]] = {}
@@ -63,22 +64,49 @@ class Standardizer:
             }
 
         self._print_stats(result, total_rows)
+        self.stats = result
 
         return result
 
-    def save(self, stats: dict[str, dict[str, float]]) -> None:
+    def save(self) -> None:
         stats_path = self.data_path / "stats.json"
         stats_path.parent.mkdir(parents=True, exist_ok=True)
         with open(stats_path, "w") as f:
-            json.dump(stats, f, indent=2)
-
-        print(f"Stats saved → {stats_path}")
+            json.dump(self.stats, f, indent=2)
 
     @staticmethod
     def _print_stats(stats: dict[str, dict[str, float]], total_rows: int):
-        print(f"  Total time steps: {total_rows:,}")
+        print(f"\nTotal time steps: {total_rows:,}")
+
+        if not stats:
+            print("No stats available to display.")
+            return
+
+        col1_w = max(len(channel) for channel in stats.keys())
+        col1_w = max(col1_w, 12)
+        col2_w = 12
+        col3_w = 20
+
+        top_border = f"┌{'─' * (col1_w + 2)}┬{'─' * (col2_w + 2)}┬{'─' * (col3_w + 2)}┐"
+        middle_border = (
+            f"├{'─' * (col1_w + 2)}┼{'─' * (col2_w + 2)}┼{'─' * (col3_w + 2)}┤"
+        )
+        bottom_border = (
+            f"└{'─' * (col1_w + 2)}┴{'─' * (col2_w + 2)}┴{'─' * (col3_w + 2)}┘"
+        )
+
+        print(top_border)
+        print(
+            f"│ {'Channel':<{col1_w}} │ {'Mean':>{col2_w}} │ {'Standard Deviation':>{col3_w}} │"
+        )
+        print(middle_border)
 
         for channel, s in stats.items():
+            mean_val = s.get("mean", 0.0)
+            std_val = s.get("standard_deviation", 0.0)
             print(
-                f"{channel:12s} -> Mean: {s['mean']:10.4f} | standard_deviation: {s['standard_deviation']:10.4f}"
+                f"│ {channel:<{col1_w}} │ {mean_val:>{col2_w}.4f} │ {std_val:>{col3_w}.4f} │"
             )
+
+        print(bottom_border)
+        print()

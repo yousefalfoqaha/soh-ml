@@ -43,7 +43,6 @@ class ExtractDischargePeriodsHandler(PipelineHandler):
         has_signal = discharge_exists or has_pulse_channel
 
         if not has_charge_channel and not has_signal:
-            print("no charge channel, and no signals")
             context.metadata["instances"] = [(-np.inf, np.inf)]
 
             return context
@@ -53,10 +52,8 @@ class ExtractDischargePeriodsHandler(PipelineHandler):
             return context
 
         if not has_charge_channel or np.all(charge_start == charge_start.mean()):
-            print("no charge channel or 1 charge")
             windows = [(-np.inf, np.inf)]
         else:
-            print("multiple charges")
             windows = list(zip(charge_start[:-1], charge_start[1:]))
 
         instances = self._extract_instances(

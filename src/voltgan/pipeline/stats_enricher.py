@@ -34,8 +34,6 @@ class StatsEnrichHandler(PipelineHandler):
         for file_path in target_files:
             self._enrich_file(file_path)
 
-        print(f"Stats enriched.")
-
         return context
 
     def _enrich_file(self, file_path: Path) -> None:

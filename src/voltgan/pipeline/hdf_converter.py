@@ -46,7 +46,6 @@ class HdfConvertHandler(PipelineHandler):
         if all(target.exists() for target in target_files):
             return context
 
-        print(f"Converting to HDF...")
         for instance, target_file in zip(instances, target_files):
             if target_file.exists():
                 continue

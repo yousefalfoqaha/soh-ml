@@ -28,8 +28,6 @@ class AmbientTemperatureHandler(PipelineHandler):
             else:
                 value = float("nan")
 
-            print(f"Ambient temp.: {value}")
-
             instances_with_temperature.append((start_t, end_t, soh, value))
 
         context.metadata["instances"] = instances_with_temperature

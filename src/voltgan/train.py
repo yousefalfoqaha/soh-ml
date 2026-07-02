@@ -1,10 +1,6 @@
-from pathlib import Path
 from typing import cast
 
 import matplotlib
-
-from voltgan.models import DiscriminatorTransformer
-from voltgan.pipeline.ambient_temperature import AmbientTemperatureHandler
 
 matplotlib.use("Agg")
 import torch
@@ -19,54 +15,31 @@ from torch.nn import Module
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
-from voltgan.data import McusDataset, Standardizer
-from voltgan.models import GeneratorGru
-from voltgan.pipeline import (
-    ChannelValidationHandler,
-    ExtractDischargePeriodsHandler,
-    HdfConvertHandler,
-    Pipeline,
-    SohHandler,
-    StatsEnrichHandler,
+from voltgan.config import (
+    BATCH_SIZE,
+    CHECKPOINT_PATH,
+    CONDITION_DIM,
+    DATA_PATH,
+    DROPOUT,
+    EMBEDDING_DIM,
+    FEEDFORWARD_DIM,
+    HIDDEN_SIZE,
+    LEARNING_RATE,
+    N_BLOCKS,
+    N_CONDITIONS,
+    N_EPOCHS,
+    N_HEADS,
+    N_LAYERS,
+    NOISE_DIM,
+    OUTPUT_FEATURES,
+    RANDOM_SEED,
+    STRIDE,
+    TRAINING_MCUS,
+    VALIDATION_MCUS,
+    WINDOW_LENGTH,
 )
-
-TRAINING_MCUS = ["mcu1"]
-VALIDATION_MCUS = ["mcu2"]
-TESTING_MCUS = ["mcu3"]
-
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_PATH = _PROJECT_ROOT / "dataset"
-PLOTS_PATH = _PROJECT_ROOT / "plots"
-CHECKPOINT_PATH = _PROJECT_ROOT / "model.pt"
-
-NOMINAL_CAPACITY = 18000.0
-RASTER_FREQUENCY = 1
-CHANNELS = ["U", "I", "Temp[1]"]
-
-RANDOM_SEED = 42
-
-N_EPOCHS = 100
-BATCH_SIZE = 64
-LEARNING_RATE = 0.0005
-
-WINDOW_LENGTH = 500
-STRIDE = 500
-
-# transformer
-EMBEDDING_DIM = 128
-FEEDFORWARD_DIM = 512
-N_HEADS = 4
-N_BLOCKS = 2
-DROPOUT = 0.1
-
-# gru
-INPUT_FEATURES = 3
-N_CONDITIONS = 1
-HIDDEN_SIZE = 128
-OUTPUT_FEATURES = 2
-N_LAYERS = 2
-NOISE_DIM = 32
-CONDITION_DIM = 8
+from voltgan.data import McusDataset, Standardizer
+from voltgan.models import DiscriminatorTransformer, GeneratorGru
 
 _interrupted = False
 
@@ -84,30 +57,18 @@ def _worker_init(worker_id):
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
-_PIPELINE_HANDLERS = [
-    ChannelValidationHandler(CHANNELS, "ClimaTemp"),
-    ExtractDischargePeriodsHandler(),
-    SohHandler(nominal_capacity=NOMINAL_CAPACITY),
-    AmbientTemperatureHandler(),
-    HdfConvertHandler(DATA_PATH, RASTER_FREQUENCY),
-    StatsEnrichHandler(),
-]
-
-
 def main():
     torch.manual_seed(RANDOM_SEED)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    pipeline = Pipeline(DATA_PATH, _PIPELINE_HANDLERS)
-    pipeline.run(TRAINING_MCUS + VALIDATION_MCUS)
-
     hdf_data_path = DATA_PATH / "hdf"
+    mcus = TRAINING_MCUS + VALIDATION_MCUS
 
     standardizer = Standardizer(DATA_PATH)
-    stats = standardizer.compute(TRAINING_MCUS)
-    standardizer.save(stats)
+    stats = standardizer.compute(mcus)
+    standardizer.save()
 
     training_dataset = McusDataset(
         mcus=TRAINING_MCUS,

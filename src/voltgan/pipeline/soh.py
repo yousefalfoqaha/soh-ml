@@ -20,8 +20,9 @@ class SohHandler(PipelineHandler):
         samples = signal.samples.astype(np.float32)
         timestamps = signal.timestamps.astype(np.float32)
 
-        print(context.metadata["instances"])
-        instances_with_soh = []
+        max_soh = 0.0
+        valid_instances = []
+
         for start_t, end_t in instances:
             mask = (timestamps >= start_t) & (timestamps <= end_t)
 
@@ -31,10 +32,13 @@ class SohHandler(PipelineHandler):
             integrated = abs(float(np.trapezoid(samples[mask], timestamps[mask])))
             soh = min(integrated / self.nominal_capacity, 1.0)
 
-            print(f"Calculated SoH: {soh}")
+            if soh > max_soh:
+                max_soh = soh
 
-            instances_with_soh.append((start_t, end_t, soh))
+            valid_instances.append((start_t, end_t))
 
-        context.metadata["instances"] = instances_with_soh
+        context.metadata["instances"] = [
+            (start_t, end_t, max_soh) for start_t, end_t in valid_instances
+        ]
 
         return context

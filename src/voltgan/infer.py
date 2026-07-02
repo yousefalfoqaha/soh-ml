@@ -7,32 +7,26 @@ from pathlib import Path
 import h5py
 import matplotlib
 
+from voltgan.config import (
+    CHECKPOINT_PATH,
+    CONDITION_DIM,
+    HDF_ROOT,
+    HIDDEN_SIZE,
+    N_CONDITIONS,
+    N_LAYERS,
+    NOISE_DIM,
+    OUTPUT_FEATURES,
+    PLOTS_PATH,
+    STATS_PATH,
+    STRIDE,
+    WINDOW_LENGTH,
+)
 from voltgan.models.generator_gru import GeneratorGru
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_DATA_PATH = _PROJECT_ROOT / "dataset"
-_HDF_ROOT = _DATA_PATH / "hdf"
-_STATS_PATH = _DATA_PATH / "stats.json"
-_CHECKPOINT = _PROJECT_ROOT / "model.pt"
-_PLOTS_PATH = _PROJECT_ROOT / "plots"
-
-WINDOW_LENGTH = 500
-STRIDE = 500
-
-# gru
-INPUT_FEATURES = 3
-N_CONDITIONS = 1
-HIDDEN_SIZE = 128
-OUTPUT_FEATURES = 2
-N_LAYERS = 2
-
-NOISE_DIM = 32
-CONDITION_DIM = 8
 
 
 def _read_hdf(
@@ -109,9 +103,9 @@ def _load_model(device: str) -> torch.nn.Module:
         condition_dim=CONDITION_DIM,
     ).to(device)
 
-    if _CHECKPOINT.exists():
-        model.load_state_dict(torch.load(_CHECKPOINT, map_location=device))
-        print(f"Loaded weights from {_CHECKPOINT}")
+    if CHECKPOINT_PATH.exists():
+        model.load_state_dict(torch.load(CHECKPOINT_PATH, map_location=device))
+        print(f"Loaded weights from {CHECKPOINT_PATH}")
     else:
         raise ValueError("No model.pt found.")
 
@@ -208,8 +202,8 @@ def _plot(
         fontsize=11,
     )
 
-    _PLOTS_PATH.mkdir(parents=True, exist_ok=True)
-    out = _PLOTS_PATH / "infer.png"
+    PLOTS_PATH.mkdir(parents=True, exist_ok=True)
+    out = PLOTS_PATH / "infer.png"
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"Plot saved → {out}")
@@ -245,7 +239,7 @@ def main() -> None:
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    hdf_path = _HDF_ROOT / args.hdf
+    hdf_path = HDF_ROOT / args.hdf
     if not hdf_path.exists():
         raise FileNotFoundError(f"HDF file not found: {hdf_path}")
 
@@ -259,13 +253,13 @@ def main() -> None:
         f"I ∈ [{current.min():.2f}, {current.max():.2f}] A"
     )
 
-    if not _STATS_PATH.exists():
+    if not STATS_PATH.exists():
         raise FileNotFoundError(
-            f"Stats file not found at {_STATS_PATH}. Run training first to generate it."
+            f"Stats file not found at {STATS_PATH}. Run training first to generate it."
         )
-    with open(_STATS_PATH) as f:
+    with open(STATS_PATH) as f:
         stats = json.load(f)
-    print(f"Stats loaded from {_STATS_PATH}")
+    print(f"Stats loaded from {STATS_PATH}")
 
     X_windows, y_windows = _make_windows(
         current,
