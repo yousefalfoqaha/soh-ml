@@ -1,4 +1,5 @@
 from voltgan.models.condition_encoding import ConditionEncoding
+from voltgan.models.discriminator_cnn import DiscriminatorCNN
 from voltgan.models.discriminator_transformer import DiscriminatorTransformer
 from voltgan.models.generator_gru import GeneratorGru
 from voltgan.models.gpt import BatteryDecoderTransformer

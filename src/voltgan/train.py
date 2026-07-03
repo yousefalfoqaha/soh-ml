@@ -12,34 +12,29 @@ import signal
 
 from torch.amp import GradScaler, autocast
 from torch.nn import Module
+from torch.nn.utils.rnn import pad_sequence
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 from voltgan.config import (
     BATCH_SIZE,
     CHECKPOINT_PATH,
-    CONDITION_DIM,
+    CHUNK_SIZE,
     DATA_PATH,
     DROPOUT,
-    EMBEDDING_DIM,
-    FEEDFORWARD_DIM,
     HIDDEN_SIZE,
+    INPUT_FEATURES,
     LEARNING_RATE,
-    N_BLOCKS,
     N_CONDITIONS,
     N_EPOCHS,
-    N_HEADS,
     N_LAYERS,
-    NOISE_DIM,
     OUTPUT_FEATURES,
     RANDOM_SEED,
-    STRIDE,
     TRAINING_MCUS,
     VALIDATION_MCUS,
-    WINDOW_LENGTH,
 )
-from voltgan.data import McusDataset, Standardizer
-from voltgan.models import DiscriminatorTransformer, GeneratorGru
+from voltgan.data import DischargeDataset, Standardizer
+from voltgan.models import GeneratorGru
 
 _interrupted = False
 
@@ -57,6 +52,35 @@ def _worker_init(worker_id):
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
+def collate_fn(batch):
+    X_list, y_list, conditions_list = [], [], []
+
+    for item in batch:
+        X_list.append(item[0])
+        conditions_list.append(item[1])
+        y_list.append(item[2])
+
+    lengths = torch.tensor([len(x) for x in X_list], dtype=torch.int64)
+    max_length = max(lengths).item()
+
+    # (batch_size, max_length)
+    X_padded = pad_sequence(X_list, batch_first=True, padding_value=0.0)
+    y_padded = pad_sequence(y_list, batch_first=True, padding_value=0.0)
+
+    # (batch_size, 2)
+    conditions_stacked = torch.stack(conditions_list, dim=0)
+
+    indices = torch.arange(max_length).expand(len(lengths), max_length)
+
+    # (batch_size, max_length)
+    mask = indices < lengths.unsqueeze(1)
+
+    # (batch_size, max_length, 1)
+    mask = mask.unsqueeze(-1)
+
+    return X_padded, conditions_stacked, y_padded, mask
+
+
 def main():
     torch.manual_seed(RANDOM_SEED)
 
@@ -70,18 +94,14 @@ def main():
     stats = standardizer.compute(mcus)
     standardizer.save()
 
-    training_dataset = McusDataset(
+    training_dataset = DischargeDataset(
         mcus=TRAINING_MCUS,
         data_path=hdf_data_path,
-        window_length=WINDOW_LENGTH,
-        stride=STRIDE,
         stats=stats,
     )
-    validation_dataset = McusDataset(
+    validation_dataset = DischargeDataset(
         mcus=VALIDATION_MCUS,
         data_path=hdf_data_path,
-        window_length=WINDOW_LENGTH,
-        stride=STRIDE,
         stats=stats,
     )
 
@@ -93,6 +113,7 @@ def main():
         pin_memory=True,
         persistent_workers=True,
         worker_init_fn=_worker_init,
+        collate_fn=collate_fn,
     )
     validation_loader = DataLoader(
         validation_dataset,
@@ -102,62 +123,33 @@ def main():
         pin_memory=True,
         persistent_workers=True,
         worker_init_fn=_worker_init,
+        collate_fn=collate_fn,
     )
 
-    generator = GeneratorGru(
+    model = GeneratorGru(
+        output_features=OUTPUT_FEATURES,
+        input_features=INPUT_FEATURES,
         n_conditions=N_CONDITIONS,
         hidden_size=HIDDEN_SIZE,
-        output_features=OUTPUT_FEATURES,
         n_layers=N_LAYERS,
         dropout=DROPOUT,
-        noise_dim=NOISE_DIM,
-        condition_dim=CONDITION_DIM,
     ).to(device)
 
-    discriminator = DiscriminatorTransformer(
-        input_features=OUTPUT_FEATURES,
-        n_conditions=N_CONDITIONS,
-        embedding_dim=EMBEDDING_DIM,
-        n_heads=N_HEADS,
-        n_blocks=N_BLOCKS,
-        feedforward_dim=FEEDFORWARD_DIM,
-        dropout=DROPOUT,
-        max_length=WINDOW_LENGTH,
-    ).to(device)
-
-    criterion = torch.nn.BCEWithLogitsLoss()
+    criterion = torch.nn.HuberLoss(reduction="none")
     scaler = GradScaler()
 
-    generator_optimizer = torch.optim.Adam(generator.parameters(), lr=LEARNING_RATE)
-    generator_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        generator_optimizer,
+    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer,
         T_max=N_EPOCHS,
-        eta_min=1e-5,
+        eta_min=5e-5,
     )
-    compiled_generator = cast(GeneratorGru, torch.compile(generator))
-
-    discriminator_optimizer = torch.optim.Adam(
-        discriminator.parameters(), lr=LEARNING_RATE
-    )
-    discriminator_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        discriminator_optimizer,
-        T_max=N_EPOCHS,
-        eta_min=1e-5,
-    )
-    compiled_discriminator = cast(
-        DiscriminatorTransformer, torch.compile(discriminator)
-    )
+    compiled_model = cast(GeneratorGru, torch.compile(model))
 
     train_and_validate(
-        # generator
-        compiled_generator,
-        generator_optimizer,
-        generator_scheduler,
-        # discriminator
-        compiled_discriminator,
-        discriminator_optimizer,
-        discriminator_scheduler,
-        # shared
+        compiled_model,
+        optimizer,
+        scheduler,
         criterion,
         training_loader,
         validation_loader,
@@ -166,18 +158,14 @@ def main():
         device,
     )
 
-    torch.save(generator.state_dict(), CHECKPOINT_PATH)
-
+    torch.save(model.state_dict(), CHECKPOINT_PATH)
     print(f"Model saved → {CHECKPOINT_PATH}")
 
 
 def train_and_validate(
-    generator: GeneratorGru,
-    generator_optimizer: Optimizer,
-    generator_scheduler: LRScheduler,
-    discriminator: DiscriminatorTransformer,
-    discriminator_optimizer: Optimizer,
-    discriminator_scheduler: LRScheduler,
+    model: GeneratorGru,
+    optimizer: Optimizer,
+    scheduler: LRScheduler,
     criterion: Module,
     training_loader: DataLoader,
     validation_loader: DataLoader,
@@ -193,113 +181,100 @@ def train_and_validate(
     device_type = "cuda" if "cuda" in device else "cpu"
     amp_dtype = torch.float16 if device_type == "cuda" else torch.bfloat16
 
-    for epoch in range(n_epochs):
-        total_discriminator_training_loss = 0.0
-        total_generator_training_loss = 0.0
-        total_discriminator_validation_loss = 0.0
-        total_generator_validation_loss = 0.0
+    # Loss weights: [Voltage Weight, Temperature Weight]
+    # We multiply temperature error by 10 so it isn't drowned out by voltage spikes
+    loss_weights = torch.tensor([1.0, 10.0], device=device, dtype=torch.float32).view(
+        1, 1, 2
+    )
 
-        generator.train()
-        discriminator.train()
-        for conditions, y_real in training_loader:
+    for epoch in range(n_epochs):
+        total_training_loss = 0.0
+        train_chunk_count = 0
+
+        model.train()
+        for X_real, conditions, y_real, mask in training_loader:
+            X_real = X_real.to(device, non_blocking=True)
             y_real = y_real.to(device, non_blocking=True)
             conditions = conditions.to(device, non_blocking=True)
-            batch_size = y_real.size(0)
-            sequence_length = y_real.size(1)
+            mask = mask.to(device, non_blocking=True)
 
-            # stage 1: train discriminator
-            discriminator_optimizer.zero_grad(set_to_none=True)
+            max_length = mask.size(1)
+            num_chunks = (max_length + CHUNK_SIZE - 1) // CHUNK_SIZE
 
-            with autocast(device_type=device_type, dtype=amp_dtype):
-                y_prediction_real = discriminator(y_real, conditions)
-                ones = torch.ones_like(y_prediction_real, dtype=torch.float32)
-                loss_real = criterion(y_prediction_real, ones)
+            hidden_state = None
 
-                noise = torch.randn(
-                    [batch_size, sequence_length, NOISE_DIM], device=device
-                )
-                y_fake, _ = generator(conditions, noise)
-                y_fake = y_fake.detach()
+            # 1. MOVED ZERO_GRAD OUTSIDE THE LOOP
+            optimizer.zero_grad(set_to_none=True)
 
-                y_prediction_fake = discriminator(y_fake, conditions)
-                zeros = torch.zeros_like(y_prediction_fake, dtype=torch.float32)
-                loss_fake = criterion(y_prediction_fake, zeros)
+            for start in range(0, max_length, CHUNK_SIZE):
+                if hidden_state is not None:
+                    hidden_state = hidden_state.detach()
 
-                discriminator_loss = loss_real + loss_fake
-
-            scaler.scale(discriminator_loss).backward()
-            scaler.step(discriminator_optimizer)
-
-            total_discriminator_training_loss += discriminator_loss.item()
-
-            # stage 2: train generator
-            generator_optimizer.zero_grad(set_to_none=True)
-            discriminator_optimizer.zero_grad(set_to_none=True)
-
-            noise = torch.randn([batch_size, sequence_length, NOISE_DIM], device=device)
-
-            with autocast(device_type=device_type, dtype=amp_dtype):
-                y_fake, _ = generator(conditions, noise)
-
-                y_prediction_fake = discriminator(y_fake, conditions)
-                ones_generator = torch.ones_like(y_prediction_fake, dtype=torch.float32)
-                generator_loss = criterion(y_prediction_fake, ones_generator)
-
-            scaler.scale(generator_loss).backward()
-            scaler.step(generator_optimizer)
-            scaler.update()
-
-            total_generator_training_loss += generator_loss.item()
-
-        generator_scheduler.step()
-        discriminator_scheduler.step()
-
-        generator.eval()
-        discriminator.eval()
-        with torch.no_grad():
-            for conditions, y_real in validation_loader:
-                y_real = y_real.to(device, non_blocking=True)
-                conditions = conditions.to(device, non_blocking=True)
-                batch_size = y_real.size(0)
-                sequence_length = y_real.size(1)
+                X_chunk = X_real[:, start : start + CHUNK_SIZE, :]
+                y_chunk = y_real[:, start : start + CHUNK_SIZE, :]
+                mask_chunk = mask[:, start : start + CHUNK_SIZE, :]
 
                 with autocast(device_type=device_type, dtype=amp_dtype):
-                    y_prediction_real = discriminator(y_real, conditions)
-                    ones = torch.ones_like(y_prediction_real, dtype=torch.float32)
-                    validation_loss_real = criterion(y_prediction_real, ones)
-
-                    noise = torch.randn(
-                        [batch_size, sequence_length, NOISE_DIM], device=device
+                    y_pred_chunk, hidden_state = model(
+                        X_chunk, conditions, hidden_state
                     )
-                    y_fake, _ = generator(conditions, noise)
 
-                    y_prediction_fake = discriminator(y_fake, conditions)
-                    zeros = torch.zeros_like(y_prediction_fake, dtype=torch.float32)
-                    validation_loss_fake = criterion(y_prediction_fake, zeros)
+                    raw_loss = criterion(y_pred_chunk, y_chunk)
 
-                    ones_g_val = torch.ones_like(y_prediction_fake, dtype=torch.float32)
-                    validation_generator_loss = criterion(y_prediction_fake, ones_g_val)
+                    # 2. APPLY WEIGHTED LOSS
+                    weighted_loss = raw_loss * loss_weights
 
-                total_discriminator_validation_loss += (
-                    validation_loss_real + validation_loss_fake
-                ).item()
-                total_generator_validation_loss += validation_generator_loss.item()
+                    chunk_loss = (weighted_loss * mask_chunk).sum() / (
+                        mask_chunk.sum() * 2 + 1e-8
+                    )
 
-        mean_discriminator_training = total_discriminator_training_loss / len(
-            training_loader
-        )
-        mean_generator_training = total_generator_training_loss / len(training_loader)
-        mean_discriminator_validation = total_discriminator_validation_loss / len(
-            validation_loader
-        )
-        mean_generator_validation = total_generator_validation_loss / len(
-            validation_loader
-        )
+                # 3. ACCUMULATE GRADIENTS (scaled by num_chunks to prevent explosion)
+                scaler.scale(chunk_loss / num_chunks).backward()
+
+                total_training_loss += chunk_loss.item()
+                train_chunk_count += 1
+
+            # 4. STEP OUTSIDE THE CHUNK LOOP
+            # Unscale and clip gradients to prevent sudden spikes
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
+            scaler.step(optimizer)
+            scaler.update()
+
+        scheduler.step()
+
+        total_validation_loss = 0.0
+        val_batch_count = 0
+
+        model.eval()
+        with torch.no_grad():
+            for X_real, conditions, y_real, mask in validation_loader:
+                X_real = X_real.to(device, non_blocking=True)
+                y_real = y_real.to(device, non_blocking=True)
+                conditions = conditions.to(device, non_blocking=True)
+                mask = mask.to(device, non_blocking=True)
+
+                with autocast(device_type=device_type, dtype=amp_dtype):
+                    y_pred, _ = model(X_real, conditions)
+
+                    raw_val_loss = criterion(y_pred, y_real)
+                    # Apply the same weights to validation so the metrics align
+                    weighted_val_loss = raw_val_loss * loss_weights
+                    val_loss = (weighted_val_loss * mask).sum() / (
+                        mask.sum() * 2 + 1e-8
+                    )
+
+                total_validation_loss += val_loss.item()
+                val_batch_count += 1
+
+        mean_training_loss = total_training_loss / max(1, train_chunk_count)
+        mean_validation_loss = total_validation_loss / max(1, val_batch_count)
 
         print(
             f"Epoch {epoch + 1:02d}/{n_epochs} | "
-            f"Train D Loss: {mean_discriminator_training:.5f} | Train G Loss: {mean_generator_training:.5f} || "
-            f"Valid D Loss: {mean_discriminator_validation:.5f} | Valid G Loss: {mean_generator_validation:.5f}"
+            f"Train MSE: {mean_training_loss:.5f} | "
+            f"Valid MSE: {mean_validation_loss:.5f}"
         )
 
         if _interrupted:

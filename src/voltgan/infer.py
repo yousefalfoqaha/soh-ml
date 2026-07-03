@@ -9,17 +9,14 @@ import matplotlib
 
 from voltgan.config import (
     CHECKPOINT_PATH,
-    CONDITION_DIM,
     HDF_ROOT,
     HIDDEN_SIZE,
+    INPUT_FEATURES,
     N_CONDITIONS,
     N_LAYERS,
-    NOISE_DIM,
     OUTPUT_FEATURES,
     PLOTS_PATH,
     STATS_PATH,
-    STRIDE,
-    WINDOW_LENGTH,
 )
 from voltgan.models.generator_gru import GeneratorGru
 
@@ -31,7 +28,7 @@ import torch
 
 def _read_hdf(
     hdf_path: Path,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float]:
     with h5py.File(hdf_path, "r") as f:
         group = f[hdf_path.name]
 
@@ -39,13 +36,18 @@ def _read_hdf(
             return group[ch][:]
 
         current = _load("I")
-        climate_temperature = _load("ClimaTemp")
-        charge = _load("Q")
         voltage = _load("U")
         temperature = _load("Temp[1]")
         soh = float(f.attrs.get("soh_file", 1.0))
+        ambient_temperature = float(f.attrs.get("ambient_temperature", 25.0))
 
-    return current, climate_temperature, charge, voltage, temperature, soh
+    return (
+        current,
+        voltage,
+        temperature,
+        soh,
+        ambient_temperature,
+    )
 
 
 def _standardize(arr: np.ndarray, s: dict) -> np.ndarray:
@@ -56,51 +58,14 @@ def _destandardize(arr: np.ndarray, s: dict) -> np.ndarray:
     return arr * s["standard_deviation"] + s["mean"]
 
 
-def _make_windows(
-    current: np.ndarray,
-    climate_temperature: np.ndarray,
-    charge: np.ndarray,
-    voltage: np.ndarray,
-    temperature: np.ndarray,
-    stats: dict,
-    window_length: int,
-    stride: int,
-) -> tuple[list[np.ndarray], list[np.ndarray]]:
-    current = _standardize(current, stats["I"])
-    climate_temperature = _standardize(climate_temperature, stats["ClimaTemp"])
-    voltage = _standardize(voltage, stats["U"])
-    battery_temperature = _standardize(temperature, stats["Temp[1]"])
-
-    X_windows, y_windows = [], []
-
-    start = 0
-    while start + window_length <= len(current):
-        end = start + window_length
-        X_windows.append(
-            np.stack(
-                [current[start:end], climate_temperature[start:end], charge[start:end]],
-                axis=1,
-            ).astype(np.float32)
-        )
-        y_windows.append(
-            np.stack(
-                [voltage[start:end], battery_temperature[start:end]], axis=1
-            ).astype(np.float32)
-        )
-        start += stride
-
-    return X_windows, y_windows
-
-
 def _load_model(device: str) -> torch.nn.Module:
     model = GeneratorGru(
+        output_features=OUTPUT_FEATURES,
+        input_features=INPUT_FEATURES,
         n_conditions=N_CONDITIONS,
         hidden_size=HIDDEN_SIZE,
-        output_features=OUTPUT_FEATURES,
         n_layers=N_LAYERS,
         dropout=0.0,
-        noise_dim=NOISE_DIM,
-        condition_dim=CONDITION_DIM,
     ).to(device)
 
     if CHECKPOINT_PATH.exists():
@@ -116,36 +81,43 @@ def _load_model(device: str) -> torch.nn.Module:
 @torch.no_grad()
 def run_inference(
     model: torch.nn.Module,
-    y_windows: list[np.ndarray],
+    current: np.ndarray,
     conditions: np.ndarray,
     device: str,
+    chunk_size: int = 5000,
 ) -> list[np.ndarray]:
-    predictions = []
-    hidden_state = None
+
+    # (sequence_length, 1)
+    x_input = np.stack([current], axis=1).astype(np.float32)
 
     # (1, conditions_size)
     conditions_tensor = (
-        torch.tensor(conditions, dtype=torch.float32).view(1, 1).to(device)
+        torch.tensor(conditions, dtype=torch.float32).view(1, -1).to(device)
     )
 
-    for i in range(len(y_windows)):
-        # (window_length, input_size)
-        y = y_windows[i]
+    predictions = []
+    hidden_state = None
+    sequence_length = len(current)
 
-        # (1, window_length, input_size)
-        y_tensor = torch.tensor(y, dtype=torch.float32).unsqueeze(0).to(device)
+    for start in range(0, sequence_length, chunk_size):
+        end = min(start + chunk_size, sequence_length)
 
-        # 1: (1, window_length, output_size)
+        # (chunk_length, input_size)
+        x_chunk = x_input[start:end]
+
+        # (1, chunk_length, input_size)
+        x_tensor = torch.tensor(x_chunk, dtype=torch.float32).unsqueeze(0).to(device)
+
+        # 1: (1, chunk_length, output_size)
         # 2: (n_layers, 1, hidden_size)
-        batch_size = y_tensor.size(0)
-        sequence_length = y_tensor.size(1)
-        noise = torch.randn([batch_size, sequence_length, NOISE_DIM], device=device)
-        prediction_tensor, hidden_state = model(conditions_tensor, noise, hidden_state)
+        prediction_tensor, hidden_state = model(
+            x_tensor, conditions_tensor, hidden_state
+        )
 
         prediction = prediction_tensor.squeeze(0).cpu().numpy()
         predictions.append(prediction)
 
-    return predictions
+    return np.concatenate(predictions, axis=0)
 
 
 def _plot(
@@ -153,7 +125,6 @@ def _plot(
     y_prediction: np.ndarray,
     stats: dict,
     stem: str,
-    n_windows: int,
 ) -> None:
     voltage_true = _destandardize(y_true[:, 0], stats["U"])
     temperature_true = _destandardize(y_true[:, 1], stats["Temp[1]"])
@@ -198,7 +169,7 @@ def _plot(
     ax_2.grid(True, alpha=0.3)
 
     fig.suptitle(
-        f"{stem}  |  {n_windows} windows × {WINDOW_LENGTH} steps = {len(y_true):,} total",
+        f"{stem}  |  Total steps = {len(y_true):,}",
         fontsize=11,
     )
 
@@ -211,19 +182,13 @@ def _plot(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run BatteryEncoderTransformer inference on a single HDF file."
+        description="Run GeneratorGru inference on a single HDF file."
     )
     parser.add_argument(
         "--hdf",
         type=Path,
         required=True,
         help='Path relative to dataset/hdf/, e.g. "mcu1/aging/sample01/2025-02-12_13.11.28 Aging_….hdf"',
-    )
-    parser.add_argument(
-        "--stride",
-        type=int,
-        default=STRIDE,
-        help=f"Stride between windows (default {STRIDE}).",
     )
     parser.add_argument(
         "--device",
@@ -244,9 +209,13 @@ def main() -> None:
         raise FileNotFoundError(f"HDF file not found: {hdf_path}")
 
     print(f"Reading {hdf_path} …")
-    current, climate_temperature, charge, voltage, temperature, soh = _read_hdf(
-        hdf_path
-    )
+    (
+        current,
+        voltage,
+        temperature,
+        soh,
+        ambient_temperature,
+    ) = _read_hdf(hdf_path)
     print(
         f"  {len(current):,} samples  |  SoH={soh:.4f}  |  "
         f"U ∈ [{voltage.min():.2f}, {voltage.max():.2f}] V  |  "
@@ -261,32 +230,25 @@ def main() -> None:
         stats = json.load(f)
     print(f"Stats loaded from {STATS_PATH}")
 
-    X_windows, y_windows = _make_windows(
-        current,
-        climate_temperature,
-        charge,
-        voltage,
-        temperature,
-        stats,
-        WINDOW_LENGTH,
-        args.stride,
-    )
-    n_windows = len(X_windows)
-    print(f"Windows: {n_windows}  (length={WINDOW_LENGTH}, stride={args.stride})")
-    if n_windows == 0:
-        raise ValueError(
-            f"Signal too short ({len(current)} samples) for window_length={WINDOW_LENGTH}."
-        )
+    current_std = _standardize(current, stats["I"])
+    voltage_std = _standardize(voltage, stats["U"])
+    temperature_std = _standardize(temperature, stats["Temp[1]"])
+
+    y_true_std = np.stack([voltage_std, temperature_std], axis=1).astype(np.float32)
 
     model = _load_model(device)
-    conditions = np.array(soh)
-    pred_windows = run_inference(model, y_windows, conditions, device)
 
-    y_true = np.concatenate(y_windows, axis=0)
-    y_prediction = np.concatenate(pred_windows, axis=0)
+    amb_std = (ambient_temperature - stats["ambient_temperature"]["mean"]) / stats[
+        "ambient_temperature"
+    ]["standard_deviation"]
+
+    conditions = np.array([soh, amb_std])
+    y_prediction_std = run_inference(
+        model, current_std, conditions, device, chunk_size=5000
+    )
 
     stem = hdf_path.stem[:40]
-    _plot(y_true, y_prediction, stats, stem, n_windows)
+    _plot(y_true_std, y_prediction_std, stats, stem)
 
 
 if __name__ == "__main__":

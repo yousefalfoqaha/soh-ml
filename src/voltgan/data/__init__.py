@@ -1,3 +1,3 @@
-from voltgan.data.dataset import McusDataset
-from voltgan.data.mcu_sample import McuSample
+from voltgan.data.dataset import DischargeDataset
+from voltgan.data.instance import DischargeInstance
 from voltgan.data.standardizer import Standardizer

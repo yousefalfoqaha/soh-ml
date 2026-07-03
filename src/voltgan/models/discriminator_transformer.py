@@ -26,12 +26,13 @@ class EncoderBlock(nn.Module):
         )
         self.post_attention_norm = nn.LayerNorm(embedding_dim)
 
-    def forward(self, embeddings):
+    def forward(self, embeddings, mask):
         pre_attention_embeddings = self.pre_attention_norm(embeddings)
         attention, _ = self.self_attention(
             query=pre_attention_embeddings,
             key=pre_attention_embeddings,
             value=pre_attention_embeddings,
+            key_padding_mask=mask,
         )
         embeddings = embeddings + attention
 
@@ -73,10 +74,10 @@ class DiscriminatorTransformer(nn.Module):
             nn.LayerNorm(embedding_dim), nn.Linear(embedding_dim, 1)
         )
 
-    # X:          (batch_size, sequence_length, X_features)
-    # y:          (batch_size, sequence_length, y_features)
+    # y:          (batch_size, max_length, y_features)
     # conditions: (batch_size, condition_size)
-    def forward(self, y, conditions):
+    # mask:       (batch_size, max_length)
+    def forward(self, y, conditions, mask):
 
         # (batch_size, sequence_length, embedding_dim)
         contextual_embeddings = self.input_signal_embedding(y)
@@ -85,8 +86,11 @@ class DiscriminatorTransformer(nn.Module):
             contextual_embeddings, conditions
         )
 
-        for block in self.blocks:
-            contextual_embeddings = block(contextual_embeddings)
+        # (batch_size, max_length)
+        attention_mask = ~mask.squeeze(-1)
 
-        # (batch_size, sequence_length, 1)
+        for block in self.blocks:
+            contextual_embeddings = block(contextual_embeddings, attention_mask)
+
+        # (batch_size, max_length, 1)
         return self.output_scores(contextual_embeddings)
