@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 import h5py
+import numpy as np
 
 from voltgan.pipeline.base import PipelineHandler, SampleContext
 
@@ -27,6 +28,7 @@ class HdfConvertHandler(PipelineHandler):
 
         mf4_path = context.source_path
         relative_path = mf4_path.relative_to(self.mf4_root)
+
         if len(instances) == 1:
             base_hdf_path = (self.hdf_root / relative_path).with_suffix(".hdf")
         else:
@@ -46,27 +48,37 @@ class HdfConvertHandler(PipelineHandler):
         if all(target.exists() for target in target_files):
             return context
 
+        df = mdf.to_dataframe(
+            channels=output_channels,
+            raster=None,
+            time_from_zero=False,
+        )
+
         for instance, target_file in zip(instances, target_files):
             if target_file.exists():
                 continue
 
             start_t, end_t, soh, ambient_temperature = instance
-            slice_mdf = mdf.cut(start=start_t, stop=end_t).filter(output_channels)
+            start_t = max(start_t, df.index[0])
+            end_t = min(end_t, df.index[-1])
+            instance_df = df.loc[start_t:end_t]
 
-            try:
-                slice_mdf.export(
-                    fmt="hdf5",
-                    filename=target_file.name,
-                    single_time_base=True,
-                    raster=self.raster,
-                    time_from_zero=True,
+            original_index = instance_df.index.to_numpy() - start_t
+            duration = original_index[-1]
+            new_index = np.arange(0, duration + self.raster, self.raster)
+            new_index = new_index[new_index <= duration]
+
+            resampled = {
+                channel: np.interp(
+                    new_index, original_index, instance_df[channel].to_numpy()
                 )
-            finally:
-                slice_mdf.close()
+                for channel in instance_df.columns
+            }
 
-            os.rename(target_file.name, target_file)
-
-            with h5py.File(target_file, "a") as f:
+            with h5py.File(target_file, "w") as f:
+                group = f.create_group(target_file.name)
+                for channel, samples in resampled.items():
+                    group.create_dataset(channel, data=samples)
                 f.attrs["soh_file"] = soh
                 f.attrs["ambient_temperature"] = ambient_temperature
 

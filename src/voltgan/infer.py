@@ -12,13 +12,13 @@ from voltgan.config import (
     HDF_ROOT,
     HIDDEN_SIZE,
     INPUT_FEATURES,
+    MAX_SEQUENCE_LENGTH,
     N_CONDITIONS,
     N_LAYERS,
-    OUTPUT_FEATURES,
     PLOTS_PATH,
     STATS_PATH,
 )
-from voltgan.models.generator_gru import GeneratorGru
+from voltgan.models import BatterySequenceGenerator
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -31,13 +31,18 @@ def _read_hdf(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float]:
     with h5py.File(hdf_path, "r") as f:
         group = f[hdf_path.name]
+        assert isinstance(group, h5py.Group)
 
         def _load(ch: str) -> np.ndarray:
-            return group[ch][:]
+            dataset = group[ch]
+            assert isinstance(dataset, h5py.Dataset)
+
+            return dataset[:MAX_SEQUENCE_LENGTH]
 
         current = _load("I")
         voltage = _load("U")
         temperature = _load("Temp[1]")
+
         soh = float(f.attrs.get("soh_file", 1.0))
         ambient_temperature = float(f.attrs.get("ambient_temperature", 25.0))
 
@@ -59,8 +64,7 @@ def _destandardize(arr: np.ndarray, s: dict) -> np.ndarray:
 
 
 def _load_model(device: str) -> torch.nn.Module:
-    model = GeneratorGru(
-        output_features=OUTPUT_FEATURES,
+    model = BatterySequenceGenerator(
         input_features=INPUT_FEATURES,
         n_conditions=N_CONDITIONS,
         hidden_size=HIDDEN_SIZE,
@@ -84,40 +88,21 @@ def run_inference(
     current: np.ndarray,
     conditions: np.ndarray,
     device: str,
-    chunk_size: int = 5000,
-) -> list[np.ndarray]:
+) -> np.ndarray:
 
-    # (sequence_length, 1)
+    # (sequence_length, 1) -> (1, sequence_length, 1)
     x_input = np.stack([current], axis=1).astype(np.float32)
+    x_tensor = torch.tensor(x_input, dtype=torch.float32).unsqueeze(0).to(device)
 
     # (1, conditions_size)
     conditions_tensor = (
         torch.tensor(conditions, dtype=torch.float32).view(1, -1).to(device)
     )
 
-    predictions = []
-    hidden_state = None
-    sequence_length = len(current)
+    prediction_tensor, _ = model(x_tensor, conditions_tensor, None)
 
-    for start in range(0, sequence_length, chunk_size):
-        end = min(start + chunk_size, sequence_length)
-
-        # (chunk_length, input_size)
-        x_chunk = x_input[start:end]
-
-        # (1, chunk_length, input_size)
-        x_tensor = torch.tensor(x_chunk, dtype=torch.float32).unsqueeze(0).to(device)
-
-        # 1: (1, chunk_length, output_size)
-        # 2: (n_layers, 1, hidden_size)
-        prediction_tensor, hidden_state = model(
-            x_tensor, conditions_tensor, hidden_state
-        )
-
-        prediction = prediction_tensor.squeeze(0).cpu().numpy()
-        predictions.append(prediction)
-
-    return np.concatenate(predictions, axis=0)
+    # (sequence_length, output_features)
+    return prediction_tensor.squeeze(0).cpu().numpy()
 
 
 def _plot(
@@ -142,7 +127,7 @@ def _plot(
         voltage_prediction,
         color="red",
         lw=0.8,
-        linestyle="--",
+        # linestyle="--",
         alpha=0.8,
         label="Pred U",
     )
@@ -158,7 +143,7 @@ def _plot(
         temperature_prediction,
         color="blue",
         lw=0.8,
-        linestyle="--",
+        # linestyle="--",
         alpha=0.8,
         label="Pred Temp",
     )
@@ -182,7 +167,7 @@ def _plot(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run GeneratorGru inference on a single HDF file."
+        description="Run BatterySequenceGenerator inference on a single HDF file."
     )
     parser.add_argument(
         "--hdf",
@@ -243,9 +228,7 @@ def main() -> None:
     ]["standard_deviation"]
 
     conditions = np.array([soh, amb_std])
-    y_prediction_std = run_inference(
-        model, current_std, conditions, device, chunk_size=5000
-    )
+    y_prediction_std = run_inference(model, current_std, conditions, device)
 
     stem = hdf_path.stem[:40]
     _plot(y_true_std, y_prediction_std, stats, stem)

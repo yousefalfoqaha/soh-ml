@@ -10,7 +10,6 @@ from torch.optim.lr_scheduler import LRScheduler
 inductor_config.max_autotune_gemm = False
 import signal
 
-from torch.amp import GradScaler, autocast
 from torch.nn import Module
 from torch.nn.utils.rnn import pad_sequence
 from torch.optim import Optimizer
@@ -28,13 +27,12 @@ from voltgan.config import (
     N_CONDITIONS,
     N_EPOCHS,
     N_LAYERS,
-    OUTPUT_FEATURES,
     RANDOM_SEED,
     TRAINING_MCUS,
     VALIDATION_MCUS,
 )
 from voltgan.data import DischargeDataset, Standardizer
-from voltgan.models import GeneratorGru
+from voltgan.models import BatterySequenceGenerator
 
 _interrupted = False
 
@@ -53,7 +51,7 @@ def _worker_init(worker_id):
 
 
 def collate_fn(batch):
-    X_list, y_list, conditions_list = [], [], []
+    X_list, conditions_list, y_list = [], [], []
 
     for item in batch:
         X_list.append(item[0])
@@ -82,6 +80,7 @@ def collate_fn(batch):
 
 
 def main():
+    torch.set_float32_matmul_precision("high")
     torch.manual_seed(RANDOM_SEED)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -126,8 +125,7 @@ def main():
         collate_fn=collate_fn,
     )
 
-    model = GeneratorGru(
-        output_features=OUTPUT_FEATURES,
+    model = BatterySequenceGenerator(
         input_features=INPUT_FEATURES,
         n_conditions=N_CONDITIONS,
         hidden_size=HIDDEN_SIZE,
@@ -136,7 +134,6 @@ def main():
     ).to(device)
 
     criterion = torch.nn.HuberLoss(reduction="none")
-    scaler = GradScaler()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -144,7 +141,7 @@ def main():
         T_max=N_EPOCHS,
         eta_min=5e-5,
     )
-    compiled_model = cast(GeneratorGru, torch.compile(model))
+    compiled_model = cast(BatterySequenceGenerator, torch.compile(model))
 
     train_and_validate(
         compiled_model,
@@ -153,7 +150,6 @@ def main():
         criterion,
         training_loader,
         validation_loader,
-        scaler,
         N_EPOCHS,
         device,
     )
@@ -162,14 +158,19 @@ def main():
     print(f"Model saved → {CHECKPOINT_PATH}")
 
 
+def _detach_hidden_state(hidden_state):
+    if hidden_state is None:
+        return None
+    return tuple(h.detach() for h in hidden_state)
+
+
 def train_and_validate(
-    model: GeneratorGru,
+    model: BatterySequenceGenerator,
     optimizer: Optimizer,
     scheduler: LRScheduler,
     criterion: Module,
     training_loader: DataLoader,
     validation_loader: DataLoader,
-    scaler: GradScaler,
     n_epochs: int,
     device: str,
 ) -> None:
@@ -178,69 +179,48 @@ def train_and_validate(
     )
     print(f"Starting training for {n_epochs} epochs...")
 
-    device_type = "cuda" if "cuda" in device else "cpu"
-    amp_dtype = torch.float16 if device_type == "cuda" else torch.bfloat16
-
-    # Loss weights: [Voltage Weight, Temperature Weight]
-    # We multiply temperature error by 10 so it isn't drowned out by voltage spikes
-    loss_weights = torch.tensor([1.0, 10.0], device=device, dtype=torch.float32).view(
-        1, 1, 2
-    )
-
     for epoch in range(n_epochs):
         total_training_loss = 0.0
-        train_chunk_count = 0
+        train_batch_count = 0
 
         model.train()
-        for X_real, conditions, y_real, mask in training_loader:
-            X_real = X_real.to(device, non_blocking=True)
-            y_real = y_real.to(device, non_blocking=True)
+        for X, conditions, y, mask in training_loader:
+            X = X.to(device, non_blocking=True)
+            y = y.to(device, non_blocking=True)
             conditions = conditions.to(device, non_blocking=True)
             mask = mask.to(device, non_blocking=True)
 
             max_length = mask.size(1)
-            num_chunks = (max_length + CHUNK_SIZE - 1) // CHUNK_SIZE
 
             hidden_state = None
+            batch_loss_sum = 0.0
+            batch_valid_sum = mask.sum().item() + 1e-8
 
-            # 1. MOVED ZERO_GRAD OUTSIDE THE LOOP
             optimizer.zero_grad(set_to_none=True)
 
             for start in range(0, max_length, CHUNK_SIZE):
-                if hidden_state is not None:
-                    hidden_state = hidden_state.detach()
+                hidden_state = _detach_hidden_state(hidden_state)
 
-                X_chunk = X_real[:, start : start + CHUNK_SIZE, :]
-                y_chunk = y_real[:, start : start + CHUNK_SIZE, :]
+                X_chunk = X[:, start : start + CHUNK_SIZE, :]
+                y_chunk = y[:, start : start + CHUNK_SIZE, :]
                 mask_chunk = mask[:, start : start + CHUNK_SIZE, :]
 
-                with autocast(device_type=device_type, dtype=amp_dtype):
-                    y_pred_chunk, hidden_state = model(
-                        X_chunk, conditions, hidden_state
-                    )
+                y_pred_chunk, hidden_state = model(X_chunk, conditions, hidden_state)
 
-                    raw_loss = criterion(y_pred_chunk, y_chunk)
+                raw_loss = criterion(y_pred_chunk, y_chunk)
 
-                    # 2. APPLY WEIGHTED LOSS
-                    weighted_loss = raw_loss * loss_weights
+                chunk_loss_sum = (raw_loss * mask_chunk).sum()
 
-                    chunk_loss = (weighted_loss * mask_chunk).sum() / (
-                        mask_chunk.sum() * 2 + 1e-8
-                    )
+                scaled_chunk_loss = chunk_loss_sum / batch_valid_sum
+                scaled_chunk_loss.backward()
 
-                # 3. ACCUMULATE GRADIENTS (scaled by num_chunks to prevent explosion)
-                scaler.scale(chunk_loss / num_chunks).backward()
+                batch_loss_sum += chunk_loss_sum.item()
 
-                total_training_loss += chunk_loss.item()
-                train_chunk_count += 1
-
-            # 4. STEP OUTSIDE THE CHUNK LOOP
-            # Unscale and clip gradients to prevent sudden spikes
-            scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
 
-            scaler.step(optimizer)
-            scaler.update()
+            total_training_loss += batch_loss_sum / batch_valid_sum
+            train_batch_count += 1
 
         scheduler.step()
 
@@ -249,32 +229,28 @@ def train_and_validate(
 
         model.eval()
         with torch.no_grad():
-            for X_real, conditions, y_real, mask in validation_loader:
-                X_real = X_real.to(device, non_blocking=True)
-                y_real = y_real.to(device, non_blocking=True)
+            for X, conditions, y, mask in validation_loader:
+                X = X.to(device, non_blocking=True)
+                y = y.to(device, non_blocking=True)
                 conditions = conditions.to(device, non_blocking=True)
                 mask = mask.to(device, non_blocking=True)
 
-                with autocast(device_type=device_type, dtype=amp_dtype):
-                    y_pred, _ = model(X_real, conditions)
+                y_pred, _ = model(X, conditions)
 
-                    raw_val_loss = criterion(y_pred, y_real)
-                    # Apply the same weights to validation so the metrics align
-                    weighted_val_loss = raw_val_loss * loss_weights
-                    val_loss = (weighted_val_loss * mask).sum() / (
-                        mask.sum() * 2 + 1e-8
-                    )
+                raw_val_loss = criterion(y_pred, y)
+
+                val_loss = (raw_val_loss * mask).sum() / (mask.sum() + 1e-8)
 
                 total_validation_loss += val_loss.item()
                 val_batch_count += 1
 
-        mean_training_loss = total_training_loss / max(1, train_chunk_count)
+        mean_training_loss = total_training_loss / max(1, train_batch_count)
         mean_validation_loss = total_validation_loss / max(1, val_batch_count)
 
         print(
             f"Epoch {epoch + 1:02d}/{n_epochs} | "
-            f"Train MSE: {mean_training_loss:.5f} | "
-            f"Valid MSE: {mean_validation_loss:.5f}"
+            f"Train Loss: {mean_training_loss:.5f} | "
+            f"Valid Loss: {mean_validation_loss:.5f}"
         )
 
         if _interrupted:
