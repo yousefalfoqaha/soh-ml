@@ -207,14 +207,14 @@ def train_and_validate(
 
                 y_pred_chunk, hidden_state = model(X_chunk, conditions, hidden_state)
 
-                raw_loss = criterion(y_pred_chunk, y_chunk)
+                loss_chunk_raw = criterion(y_pred_chunk, y_chunk)
 
-                chunk_loss_sum = (raw_loss * mask_chunk).sum()
+                loss_chunk = (loss_chunk_raw * mask_chunk).sum()
 
-                scaled_chunk_loss = chunk_loss_sum / batch_valid_sum
+                scaled_chunk_loss = loss_chunk / batch_valid_sum
                 scaled_chunk_loss.backward()
 
-                batch_loss_sum += chunk_loss_sum.item()
+                batch_loss_sum += loss_chunk.item()
 
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()

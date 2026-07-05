@@ -1,7 +1,23 @@
+import torch
 from torch import nn
 
-from voltgan.models.condition_encoding import ConditionEncoding
-from voltgan.models.positional_encoding import PositionalEncoding
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, max_sequence_length: int, embed_dim: int, dropout: float = 0.1):
+        super().__init__()
+        self.time_step_embeddings = nn.Parameter(
+            torch.randn(max_sequence_length, embed_dim) * 0.02
+        )
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, sequence):
+        sequence_length = sequence.size(1)
+
+        # (sequence_length, embed_dim)
+        bias = self.time_step_embeddings[:sequence_length]
+
+        # (sequence_length, embed_dim)
+        return self.dropout(sequence + bias)
 
 
 class EncoderBlock(nn.Module):
@@ -26,13 +42,12 @@ class EncoderBlock(nn.Module):
         )
         self.post_attention_norm = nn.LayerNorm(embedding_dim)
 
-    def forward(self, embeddings, mask):
+    def forward(self, embeddings):
         pre_attention_embeddings = self.pre_attention_norm(embeddings)
         attention, _ = self.self_attention(
             query=pre_attention_embeddings,
             key=pre_attention_embeddings,
             value=pre_attention_embeddings,
-            key_padding_mask=mask,
         )
         embeddings = embeddings + attention
 
@@ -42,11 +57,10 @@ class EncoderBlock(nn.Module):
         return embeddings
 
 
-class DiscriminatorTransformer(nn.Module):
+class SohEstimator(nn.Module):
     def __init__(
         self,
         input_features: int,
-        n_conditions: int,
         embedding_dim: int,
         n_heads: int,
         n_blocks: int,
@@ -59,9 +73,6 @@ class DiscriminatorTransformer(nn.Module):
         self.input_signal_embedding = nn.Linear(input_features, embedding_dim)
 
         self.pos_encoding = PositionalEncoding(max_length, embedding_dim, dropout)
-        self.condition_encoding = ConditionEncoding(
-            embedding_dim, n_conditions, dropout
-        )
 
         self.blocks = nn.ModuleList(
             [
@@ -70,27 +81,17 @@ class DiscriminatorTransformer(nn.Module):
             ]
         )
 
-        self.output_scores = nn.Sequential(
-            nn.LayerNorm(embedding_dim), nn.Linear(embedding_dim, 1)
-        )
+        self.output = nn.Linear(embedding_dim, 1)
 
-    # y:          (batch_size, max_length, y_features)
-    # conditions: (batch_size, condition_size)
-    # mask:       (batch_size, max_length)
-    def forward(self, y, conditions, mask):
+    # X: (batch_size, max_length, X_features)
+    def forward(self, X):
 
         # (batch_size, sequence_length, embedding_dim)
-        contextual_embeddings = self.input_signal_embedding(y)
+        contextual_embeddings = self.input_signal_embedding(X)
         contextual_embeddings = self.pos_encoding(contextual_embeddings)
-        contextual_embeddings = self.condition_encoding(
-            contextual_embeddings, conditions
-        )
-
-        # (batch_size, max_length)
-        attention_mask = ~mask.squeeze(-1)
 
         for block in self.blocks:
-            contextual_embeddings = block(contextual_embeddings, attention_mask)
+            contextual_embeddings = block(contextual_embeddings)
 
         # (batch_size, max_length, 1)
-        return self.output_scores(contextual_embeddings)
+        return self.output(contextual_embeddings)

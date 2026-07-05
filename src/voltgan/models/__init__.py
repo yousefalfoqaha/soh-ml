@@ -1,4 +1,2 @@
 from voltgan.models.battery_sequence_generator import BatterySequenceGenerator
-from voltgan.models.condition_encoding import ConditionEncoding
-from voltgan.models.discriminator_transformer import DiscriminatorTransformer
-from voltgan.models.positional_encoding import PositionalEncoding
+from voltgan.models.soh_estimator import SohEstimator
