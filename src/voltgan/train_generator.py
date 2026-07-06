@@ -17,10 +17,10 @@ from torch.utils.data import DataLoader
 
 from voltgan.config import (
     BATCH_SIZE,
-    CHECKPOINT_PATH,
     CHUNK_SIZE,
     DATA_PATH,
     DROPOUT,
+    GENERATOR_CHECKPOINT_PATH,
     HIDDEN_SIZE,
     INPUT_FEATURES,
     LEARNING_RATE,
@@ -154,8 +154,8 @@ def main():
         device,
     )
 
-    torch.save(model.state_dict(), CHECKPOINT_PATH)
-    print(f"Model saved → {CHECKPOINT_PATH}")
+    torch.save(model.state_dict(), GENERATOR_CHECKPOINT_PATH)
+    print(f"Model saved → {GENERATOR_CHECKPOINT_PATH}")
 
 
 def _detach_hidden_state(hidden_state):

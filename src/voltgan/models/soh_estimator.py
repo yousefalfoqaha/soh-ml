@@ -48,6 +48,7 @@ class EncoderBlock(nn.Module):
             query=pre_attention_embeddings,
             key=pre_attention_embeddings,
             value=pre_attention_embeddings,
+            need_weights=False,
         )
         embeddings = embeddings + attention
 
@@ -64,9 +65,9 @@ class SohEstimator(nn.Module):
         embedding_dim: int,
         n_heads: int,
         n_blocks: int,
-        feedforward_dim: int = 2048,
+        feedforward_dim: int = 512,
         dropout: float = 0.1,
-        max_length: int = 10000,
+        max_length: int = 1000,
     ):
         super().__init__()
 
@@ -93,5 +94,7 @@ class SohEstimator(nn.Module):
         for block in self.blocks:
             contextual_embeddings = block(contextual_embeddings)
 
-        # (batch_size, max_length, 1)
-        return self.output(contextual_embeddings)
+        mean_pool = torch.mean(contextual_embeddings, dim=1)
+
+        # (batch_size, 1)
+        return self.output(mean_pool)

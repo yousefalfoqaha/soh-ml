@@ -3,5 +3,5 @@ python = "3.14"
 uv = "latest"
 
 [env]
-PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
+PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True"
 _.python.venv = ".venv"

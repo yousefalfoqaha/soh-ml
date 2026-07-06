@@ -8,7 +8,7 @@ import h5py
 import matplotlib
 
 from voltgan.config import (
-    CHECKPOINT_PATH,
+    GENERATOR_CHECKPOINT_PATH,
     HDF_ROOT,
     HIDDEN_SIZE,
     INPUT_FEATURES,
@@ -72,9 +72,11 @@ def _load_model(device: str) -> torch.nn.Module:
         dropout=0.0,
     ).to(device)
 
-    if CHECKPOINT_PATH.exists():
-        model.load_state_dict(torch.load(CHECKPOINT_PATH, map_location=device))
-        print(f"Loaded weights from {CHECKPOINT_PATH}")
+    if GENERATOR_CHECKPOINT_PATH.exists():
+        model.load_state_dict(
+            torch.load(GENERATOR_CHECKPOINT_PATH, map_location=device)
+        )
+        print(f"Loaded weights from {GENERATOR_CHECKPOINT_PATH}")
     else:
         raise ValueError("No model.pt found.")
 
@@ -227,7 +229,9 @@ def main() -> None:
         "ambient_temperature"
     ]["standard_deviation"]
 
-    conditions = np.array([soh, amb_std])
+    soh_std = (soh - stats["soh"]["mean"]) / stats["soh"]["standard_deviation"]
+
+    conditions = np.array([soh_std, amb_std])
     y_prediction_std = run_inference(model, current_std, conditions, device)
 
     stem = hdf_path.stem[:40]

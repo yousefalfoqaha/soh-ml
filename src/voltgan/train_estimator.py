@@ -1,5 +1,3 @@
-from typing import cast
-
 import matplotlib
 
 from voltgan.models.soh_estimator import SohEstimator
@@ -7,7 +5,7 @@ from voltgan.models.soh_estimator import SohEstimator
 matplotlib.use("Agg")
 import torch
 import torch._inductor.config as inductor_config
-from torch.optim.lr_scheduler import LRScheduler
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 inductor_config.max_autotune_gemm = False
 import signal
@@ -18,11 +16,10 @@ from torch.utils.data import DataLoader
 
 from voltgan.config import (
     BATCH_SIZE,
-    CHECKPOINT_PATH,
-    CHUNK_SIZE,
     DATA_PATH,
     DROPOUT,
     EMBEDDING_DIM,
+    ESTIMATOR_CHECKPOINT_PATH,
     FEEDFORWARD_DIM,
     INPUT_FEATURES,
     LEARNING_RATE,
@@ -32,8 +29,9 @@ from voltgan.config import (
     RANDOM_SEED,
     TRAINING_MCUS,
     VALIDATION_MCUS,
+    WINDOW_SIZE,
 )
-from voltgan.data import DischargeDataset, Standardizer
+from voltgan.data import EstimatorDataset, Standardizer
 from voltgan.models import SohEstimator
 
 _interrupted = False
@@ -66,11 +64,11 @@ def main():
     stats = standardizer.compute(mcus)
     standardizer.save()
 
-    training_dataset = DischargeDataset(
-        mcus=TRAINING_MCUS, data_path=hdf_data_path, stats=stats, windows=True
+    training_dataset = EstimatorDataset(
+        mcus=TRAINING_MCUS, data_path=hdf_data_path, stats=stats
     )
-    validation_dataset = DischargeDataset(
-        mcus=VALIDATION_MCUS, data_path=hdf_data_path, stats=stats, windows=True
+    validation_dataset = EstimatorDataset(
+        mcus=VALIDATION_MCUS, data_path=hdf_data_path, stats=stats
     )
 
     training_loader = DataLoader(
@@ -99,20 +97,18 @@ def main():
         n_heads=N_HEADS,
         n_blocks=N_BLOCKS,
         dropout=DROPOUT,
+        max_length=WINDOW_SIZE,
     ).to(device)
 
-    criterion = torch.nn.MSELoss()
+    criterion = torch.nn.L1Loss()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=N_EPOCHS,
-        eta_min=5e-5,
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode="min", patience=2, factor=0.1
     )
-    compiled_model = cast(SohEstimator, torch.compile(model))
 
     train_and_validate(
-        compiled_model,
+        model,
         optimizer,
         scheduler,
         criterion,
@@ -122,20 +118,14 @@ def main():
         device,
     )
 
-    torch.save(model.state_dict(), CHECKPOINT_PATH)
-    print(f"Model saved → {CHECKPOINT_PATH}")
-
-
-def _detach_hidden_state(hidden_state):
-    if hidden_state is None:
-        return None
-    return tuple(h.detach() for h in hidden_state)
+    torch.save(model.state_dict(), ESTIMATOR_CHECKPOINT_PATH)
+    print(f"Model saved → {ESTIMATOR_CHECKPOINT_PATH}")
 
 
 def train_and_validate(
     model: SohEstimator,
     optimizer: Optimizer,
-    scheduler: LRScheduler,
+    scheduler: ReduceLROnPlateau,
     criterion: Module,
     training_loader: DataLoader,
     validation_loader: DataLoader,
@@ -149,7 +139,7 @@ def train_and_validate(
 
     for epoch in range(n_epochs):
         total_training_loss = 0.0
-        train_batch_count = 0
+        total_validation_loss = 0.0
 
         model.train()
         for X, y in training_loader:
@@ -159,14 +149,13 @@ def train_and_validate(
             optimizer.zero_grad(set_to_none=True)
 
             y_pred = model(X)
+
             loss = criterion(y_pred, y)
             loss.backward()
 
+            total_training_loss += loss.item()
+
             optimizer.step()
-
-        scheduler.step()
-
-        total_validation_loss = 0.0
 
         model.eval()
         with torch.no_grad():
@@ -177,15 +166,17 @@ def train_and_validate(
                 y_pred = model(X)
 
                 loss = criterion(y_pred, y)
-                total_validation_loss += loss
+                total_validation_loss += loss.item()
 
-        mean_training_loss = total_training_loss / max(1, train_batch_count)
-        mean_validation_loss = total_validation_loss / max(1, val_batch_count)
+        average_training_loss = total_training_loss / len(training_loader)
+        average_validation_loss = total_validation_loss / len(validation_loader)
+
+        scheduler.step(average_validation_loss)
 
         print(
             f"Epoch {epoch + 1:02d}/{n_epochs} | "
-            f"Train Loss: {mean_training_loss:.5f} | "
-            f"Valid Loss: {mean_validation_loss:.5f}"
+            f"Train Loss: {average_training_loss:.5f} | "
+            f"Valid Loss: {average_validation_loss:.5f}"
         )
 
         if _interrupted:
