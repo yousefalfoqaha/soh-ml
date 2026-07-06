@@ -2,6 +2,21 @@ import torch
 from torch import nn
 
 
+class ConditionalEncoding(nn.Module):
+    def __init__(self, n_conditions: int, embed_dim: int, dropout: float = 0.1):
+        super().__init__()
+        self.embedding = nn.Linear(n_conditions, embed_dim)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, sequence, conditions):
+
+        # (batch_size, 1, embed_dim)
+        bias = self.embedding(conditions).unsqueeze(1)
+
+        # (batch_size, window_length, embed_dim)
+        return self.dropout(sequence + bias)
+
+
 class PositionalEncoding(nn.Module):
     def __init__(self, max_sequence_length: int, embed_dim: int, dropout: float = 0.1):
         super().__init__()
@@ -62,6 +77,7 @@ class SohEstimator(nn.Module):
     def __init__(
         self,
         input_features: int,
+        n_conditions: int,
         embedding_dim: int,
         n_heads: int,
         n_blocks: int,
@@ -74,6 +90,9 @@ class SohEstimator(nn.Module):
         self.input_signal_embedding = nn.Linear(input_features, embedding_dim)
 
         self.pos_encoding = PositionalEncoding(max_length, embedding_dim, dropout)
+        self.conditional_encoding = ConditionalEncoding(
+            n_conditions, embedding_dim, dropout
+        )
 
         self.blocks = nn.ModuleList(
             [
@@ -85,10 +104,13 @@ class SohEstimator(nn.Module):
         self.output = nn.Linear(embedding_dim, 1)
 
     # X: (batch_size, max_length, X_features)
-    def forward(self, X):
+    def forward(self, X, conditions):
 
         # (batch_size, sequence_length, embedding_dim)
         contextual_embeddings = self.input_signal_embedding(X)
+        contextual_embeddings = self.conditional_encoding(
+            contextual_embeddings, conditions
+        )
         contextual_embeddings = self.pos_encoding(contextual_embeddings)
 
         for block in self.blocks:

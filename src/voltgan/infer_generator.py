@@ -9,11 +9,11 @@ import matplotlib
 
 from voltgan.config import (
     GENERATOR_CHECKPOINT_PATH,
+    GENERATOR_N_CONDITIONS,
     HDF_ROOT,
     HIDDEN_SIZE,
     INPUT_FEATURES,
     MAX_SEQUENCE_LENGTH,
-    N_CONDITIONS,
     N_LAYERS,
     PLOTS_PATH,
     STATS_PATH,
@@ -66,7 +66,7 @@ def _destandardize(arr: np.ndarray, s: dict) -> np.ndarray:
 def _load_model(device: str) -> torch.nn.Module:
     model = BatterySequenceGenerator(
         input_features=INPUT_FEATURES,
-        n_conditions=N_CONDITIONS,
+        n_conditions=GENERATOR_N_CONDITIONS,
         hidden_size=HIDDEN_SIZE,
         n_layers=N_LAYERS,
         dropout=0.0,

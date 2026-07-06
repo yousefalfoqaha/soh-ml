@@ -13,6 +13,7 @@ import torch
 from voltgan.config import (
     EMBEDDING_DIM,
     ESTIMATOR_CHECKPOINT_PATH,
+    ESTIMATOR_N_CONDITIONS,
     FEEDFORWARD_DIM,
     HDF_ROOT,
     INPUT_FEATURES,
@@ -25,8 +26,8 @@ from voltgan.data import DischargeInstance
 from voltgan.models import SohEstimator
 
 
-def _standardize(arr: np.ndarray, s: dict) -> np.ndarray:
-    return (arr - s["mean"]) / s["standard_deviation"]
+def _standardize(item, s: dict) -> np.ndarray:
+    return (item - s["mean"]) / s["standard_deviation"]
 
 
 def _destandardize(arr: np.ndarray, s: dict) -> np.ndarray:
@@ -39,6 +40,7 @@ def _load_model(device: str) -> torch.nn.Module:
 
     model = SohEstimator(
         input_features=INPUT_FEATURES,
+        n_conditions=ESTIMATOR_N_CONDITIONS,
         embedding_dim=EMBEDDING_DIM,
         feedforward_dim=FEEDFORWARD_DIM,
         n_heads=N_HEADS,
@@ -68,12 +70,14 @@ def _make_windows(x_std: np.ndarray, window_size: int) -> np.ndarray:
 def run_inference(
     model: torch.nn.Module,
     windows: np.ndarray,
+    conditions: np.ndarray,
     device: str,
 ) -> np.ndarray:
     # (n_windows, window_size, input_features)
     x_tensor = torch.tensor(windows, dtype=torch.float32).to(device)
+    conditions_tensor = torch.tensor(conditions, dtype=torch.float32).to(device)
 
-    prediction_tensor = model(x_tensor)
+    prediction_tensor = model(x_tensor, conditions_tensor)
 
     # (n_windows,)
     return prediction_tensor.squeeze(-1).cpu().numpy()
@@ -127,10 +131,15 @@ def main() -> None:
     voltage_std = _standardize(raw[:, 0], stats["U"])
     current_std = _standardize(raw[:, 1], stats["I"])
     temperature_std = _standardize(raw[:, 2], stats["Temp[1]"])
+    ambient_temperature = _standardize(
+        instance.ambient_temperature, stats["ambient_temperature"]
+    )
 
     x_std = np.stack([voltage_std, current_std, temperature_std], axis=1).astype(
         np.float32
     )
+
+    conditions_std = np.stack([[ambient_temperature]]).astype(np.float32)
 
     model = _load_model(device)
 
@@ -147,7 +156,7 @@ def main() -> None:
             f"({WINDOW_SIZE:,}); no full windows to run inference on."
         )
 
-    predicted_soh_per_window_std = run_inference(model, windows, device)
+    predicted_soh_per_window_std = run_inference(model, windows, conditions_std, device)
     predicted_soh_per_window = _destandardize(
         predicted_soh_per_window_std, stats["soh"]
     )

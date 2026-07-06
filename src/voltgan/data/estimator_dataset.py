@@ -62,8 +62,15 @@ class EstimatorDataset(torch.utils.data.Dataset):
         current = torch.from_numpy(current).float()
         temperature = torch.from_numpy(temperature).float()
 
+        ambient_temperature = (
+            instance.ambient_temperature - self._means[3]
+        ) / self._standard_deviations[3]
+
         # (instance_length, 3)
         X = torch.stack([voltage, current, temperature], dim=1)
+
+        # (1,)
+        conditions = torch.tensor([ambient_temperature], dtype=torch.float32)
 
         soh_standardized = (instance.soh - self._means[4]) / self._standard_deviations[
             4
@@ -72,4 +79,4 @@ class EstimatorDataset(torch.utils.data.Dataset):
         # (1,)
         y = torch.tensor([soh_standardized], dtype=torch.float32)
 
-        return X, y
+        return X, conditions, y

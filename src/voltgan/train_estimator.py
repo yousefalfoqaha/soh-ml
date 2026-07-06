@@ -20,6 +20,7 @@ from voltgan.config import (
     DROPOUT,
     EMBEDDING_DIM,
     ESTIMATOR_CHECKPOINT_PATH,
+    ESTIMATOR_N_CONDITIONS,
     FEEDFORWARD_DIM,
     INPUT_FEATURES,
     LEARNING_RATE,
@@ -92,6 +93,7 @@ def main():
 
     model = SohEstimator(
         input_features=INPUT_FEATURES,
+        n_conditions=ESTIMATOR_N_CONDITIONS,
         embedding_dim=EMBEDDING_DIM,
         feedforward_dim=FEEDFORWARD_DIM,
         n_heads=N_HEADS,
@@ -100,7 +102,7 @@ def main():
         max_length=WINDOW_SIZE,
     ).to(device)
 
-    criterion = torch.nn.L1Loss()
+    criterion = torch.nn.MSELoss()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -142,13 +144,14 @@ def train_and_validate(
         total_validation_loss = 0.0
 
         model.train()
-        for X, y in training_loader:
+        for X, conditions, y in training_loader:
             X = X.to(device, non_blocking=True)
+            conditions = conditions.to(device, non_blocking=True)
             y = y.to(device, non_blocking=True)
 
             optimizer.zero_grad(set_to_none=True)
 
-            y_pred = model(X)
+            y_pred = model(X, conditions)
 
             loss = criterion(y_pred, y)
             loss.backward()
@@ -159,11 +162,12 @@ def train_and_validate(
 
         model.eval()
         with torch.no_grad():
-            for X, y in validation_loader:
+            for X, conditions, y in validation_loader:
                 X = X.to(device, non_blocking=True)
+                conditions = conditions.to(device, non_blocking=True)
                 y = y.to(device, non_blocking=True)
 
-                y_pred = model(X)
+                y_pred = model(X, conditions)
 
                 loss = criterion(y_pred, y)
                 total_validation_loss += loss.item()

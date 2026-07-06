@@ -21,10 +21,10 @@ from voltgan.config import (
     DATA_PATH,
     DROPOUT,
     GENERATOR_CHECKPOINT_PATH,
+    GENERATOR_N_CONDITIONS,
     HIDDEN_SIZE,
     INPUT_FEATURES,
     LEARNING_RATE,
-    N_CONDITIONS,
     N_EPOCHS,
     N_LAYERS,
     RANDOM_SEED,
@@ -127,7 +127,7 @@ def main():
 
     model = BatterySequenceGenerator(
         input_features=INPUT_FEATURES,
-        n_conditions=N_CONDITIONS,
+        n_conditions=GENERATOR_N_CONDITIONS,
         hidden_size=HIDDEN_SIZE,
         n_layers=N_LAYERS,
         dropout=DROPOUT,
