@@ -1,11 +1,14 @@
 import os
-import shutil
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Generator
 
 from asammdf import MDF
+
+_DATETIME_PATTERN = re.compile(r"(\d{4}-\d{2}-\d{2})[_ ](\d{2}\.\d{2}\.\d{2})")
 
 
 @dataclass
@@ -40,6 +43,30 @@ def discover(
                 yield path
 
 
+def _parse_datetime(path: Path) -> datetime:
+    match = _DATETIME_PATTERN.search(path.name)
+    if not match:
+        raise ValueError(f"Cannot parse date-time from filename: {path.name}")
+    date_str, time_str = match.group(1), match.group(2)
+    return datetime.strptime(
+        f"{date_str} {time_str.replace('.', ':')}", "%Y-%m-%d %H:%M:%S"
+    )
+
+
+def _discover_sorted(root: Path, mcu: str, extensions: tuple[str, ...]) -> list[Path]:
+    mcu_path = root / mcu
+    if not mcu_path.exists():
+        print(f"Source directory missing, skipping MCU: {mcu_path}")
+        return []
+
+    paths = [
+        path
+        for path in mcu_path.rglob("*")
+        if path.is_file() and path.suffix.lower() in extensions
+    ]
+    return sorted(paths, key=_parse_datetime)
+
+
 class Pipeline:
     def __init__(self, data_path: Path, handlers: list[PipelineHandler]):
         self.data_path = data_path
@@ -48,30 +75,41 @@ class Pipeline:
         self.hdf_root = data_path / "hdf"
 
     def run(self, mcus: list[str]):
-        for mf4_path in discover(self.mf4_root, mcus, (".mf4", ".dat")):
-            relative_path = mf4_path.relative_to(self.mf4_root)
-            hdf_path = (self.hdf_root / relative_path).with_suffix(".hdf")
-            dir_path = (self.hdf_root / relative_path).with_suffix("")
+        for mcu in mcus:
+            discharge_cycle_index: int = 0
 
-            if dir_path.exists() or hdf_path.exists():
-                continue
+            for mf4_path in _discover_sorted(self.mf4_root, mcu, (".mf4", ".dat")):
+                relative_path = mf4_path.relative_to(self.mf4_root)
+                base_path = (self.hdf_root / relative_path).with_suffix("")
+                stem = base_path.name
+                parent = base_path.parent
 
-            context = SampleContext(source_path=mf4_path)
+                existing = list(parent.glob(f"{stem}.hdf")) + list(
+                    parent.glob(f"{stem}_*.hdf")
+                )
+                if existing:
+                    continue
 
-            print(f"Processing {mf4_path.name}...")
+                context = SampleContext(source_path=mf4_path)
+                context.metadata["discharge_cycle_index"] = discharge_cycle_index
 
-            try:
-                for handler in self.handlers:
-                    context = handler.handle(context)
+                print(f"Processing {mf4_path.name}...")
 
-                    if context.interrupted:
-                        if context.output_path and context.output_path.is_file():
-                            os.remove(context.output_path)
-                        elif context.output_path and context.output_path.is_dir():
-                            shutil.rmtree(context.output_path)
+                try:
+                    for handler in self.handlers:
+                        context = handler.handle(context)
 
-                        raise ValueError(
-                            f"[{handler.__class__.__name__}] {context.interrupted}"
-                        )
-            finally:
-                context.mdf.close()
+                        if context.interrupted:
+                            for target in context.metadata.get("target_files", []):
+                                if target.is_file():
+                                    os.remove(target)
+
+                            raise ValueError(
+                                f"[{handler.__class__.__name__}] {context.interrupted}"
+                            )
+                finally:
+                    context.mdf.close()
+
+                discharge_cycle_index = context.metadata.get(
+                    "discharge_cycle_index", discharge_cycle_index
+                )

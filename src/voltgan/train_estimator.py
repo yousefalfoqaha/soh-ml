@@ -16,17 +16,18 @@ from torch.utils.data import DataLoader
 
 from voltgan.config import (
     BATCH_SIZE,
+    CONV_CHANNELS,
+    CONV_KERNEL_SIZES,
+    CONV_STRIDES,
     DATA_PATH,
     DROPOUT,
-    EMBEDDING_DIM,
     ESTIMATOR_CHECKPOINT_PATH,
     ESTIMATOR_N_CONDITIONS,
-    FEEDFORWARD_DIM,
+    GRU_HIDDEN_SIZE,
+    GRU_N_LAYERS,
     INPUT_FEATURES,
     LEARNING_RATE,
-    N_BLOCKS,
     N_EPOCHS,
-    N_HEADS,
     RANDOM_SEED,
     TRAINING_MCUS,
     VALIDATION_MCUS,
@@ -94,19 +95,19 @@ def main():
     model = SohEstimator(
         input_features=INPUT_FEATURES,
         n_conditions=ESTIMATOR_N_CONDITIONS,
-        embedding_dim=EMBEDDING_DIM,
-        feedforward_dim=FEEDFORWARD_DIM,
-        n_heads=N_HEADS,
-        n_blocks=N_BLOCKS,
+        conv_channels=CONV_CHANNELS,
+        conv_kernel_sizes=CONV_KERNEL_SIZES,
+        conv_strides=CONV_STRIDES,
+        gru_hidden_size=GRU_HIDDEN_SIZE,
+        gru_n_layers=GRU_N_LAYERS,
         dropout=DROPOUT,
-        max_length=WINDOW_SIZE,
     ).to(device)
 
     criterion = torch.nn.MSELoss()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", patience=2, factor=0.1
+        optimizer, mode="min", patience=10, factor=0.1
     )
 
     train_and_validate(

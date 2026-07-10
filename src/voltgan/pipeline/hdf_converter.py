@@ -1,10 +1,9 @@
-import os
 from pathlib import Path
 
 import h5py
 import numpy as np
 
-from voltgan.pipeline.base import PipelineHandler, SampleContext
+from voltgan.pipeline.base import PipelineHandler, SampleContext, _parse_datetime
 
 
 class HdfConvertHandler(PipelineHandler):
@@ -28,22 +27,19 @@ class HdfConvertHandler(PipelineHandler):
 
         mf4_path = context.source_path
         relative_path = mf4_path.relative_to(self.mf4_root)
+        base_path = (self.hdf_root / relative_path).with_suffix("")
+        base_path.parent.mkdir(parents=True, exist_ok=True)
 
         if len(instances) == 1:
-            base_hdf_path = (self.hdf_root / relative_path).with_suffix(".hdf")
+            target_files = [base_path.parent / f"{base_path.name}.hdf"]
         else:
-            base_hdf_path = (self.hdf_root / relative_path).with_suffix("")
+            target_files = [
+                base_path.parent / f"{base_path.name}_{i}.hdf"
+                for i in range(1, len(instances) + 1)
+            ]
 
-        context.output_path = base_hdf_path
-
-        target_files = []
-        if len(instances) == 1:
-            base_hdf_path.parent.mkdir(parents=True, exist_ok=True)
-            target_files.append(base_hdf_path)
-        else:
-            base_hdf_path.mkdir(parents=True, exist_ok=True)
-            for i in range(1, len(instances) + 1):
-                target_files.append(base_hdf_path / f"{i}.hdf")
+        context.output_path = target_files[0]
+        context.metadata["target_files"] = target_files
 
         if all(target.exists() for target in target_files):
             return context
@@ -54,17 +50,19 @@ class HdfConvertHandler(PipelineHandler):
             time_from_zero=False,
         )
 
+        discharge_cycle_index = context.metadata.get("discharge_cycle_index", 0)
+
         for instance, target_file in zip(instances, target_files):
             if target_file.exists():
                 continue
 
-            start_t, end_t, soh, ambient_temperature = instance
+            start_t, end_t, soh, mean_neg_current, ambient_temperature = instance
             start_t = max(start_t, df.index[0])
             end_t = min(end_t, df.index[-1])
             instance_df = df.loc[start_t:end_t]
 
             original_index = instance_df.index.to_numpy() - start_t
-            duration = original_index[-1]
+            duration = float(original_index[-1])
             new_index = np.arange(0, duration + self.raster, self.raster)
             new_index = new_index[new_index <= duration]
 
@@ -75,11 +73,19 @@ class HdfConvertHandler(PipelineHandler):
                 for channel in instance_df.columns
             }
 
+            dt = _parse_datetime(context.source_path)
+
             with h5py.File(target_file, "w") as f:
                 group = f.create_group(target_file.name)
                 for channel, samples in resampled.items():
                     group.create_dataset(channel, data=samples)
-                f.attrs["soh_file"] = soh
+                f.attrs["soh"] = soh
                 f.attrs["ambient_temperature"] = ambient_temperature
+                f.attrs["mean_neg_current"] = mean_neg_current
+                f.attrs["datetime"] = dt.isoformat()
+                f.attrs["discharge_cycle_index"] = discharge_cycle_index
 
+            discharge_cycle_index += 1
+
+        context.metadata["discharge_cycle_index"] = discharge_cycle_index
         return context

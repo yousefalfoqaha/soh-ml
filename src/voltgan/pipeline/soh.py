@@ -16,29 +16,35 @@ class SohHandler(PipelineHandler):
         if not instances:
             return context
 
-        signal = context.mdf.get("I")
-        samples = signal.samples.astype(np.float32)
-        timestamps = signal.timestamps.astype(np.float32)
+        mdf = context.mdf
 
-        max_soh = 0.0
-        valid_instances = []
+        current_signal = mdf.get("I")
+        current_samples = current_signal.samples.astype(np.float32)
+        current_timestamps = current_signal.timestamps.astype(np.float32)
 
+        result_instances = []
         for start_t, end_t in instances:
-            mask = (timestamps >= start_t) & (timestamps <= end_t)
-
-            if not np.any(mask):
+            cur_mask = (current_timestamps >= start_t) & (
+                current_timestamps <= end_t
+            )
+            if not np.any(cur_mask):
                 continue
 
-            integrated = abs(float(np.trapezoid(samples[mask], timestamps[mask])))
+            masked_current = current_samples[cur_mask]
+            masked_timestamps = current_timestamps[cur_mask]
+
+            integrated = abs(
+                float(np.trapezoid(masked_current, masked_timestamps))
+            )
             soh = min(integrated / self.nominal_capacity, 1.0)
 
-            if soh > max_soh:
-                max_soh = soh
+            neg_current = masked_current[masked_current < 0]
+            if neg_current.size:
+                mean_neg_current = float(np.mean(np.abs(neg_current)))
+            else:
+                mean_neg_current = 0.0
 
-            valid_instances.append((start_t, end_t))
+            result_instances.append((start_t, end_t, soh, mean_neg_current))
 
-        context.metadata["instances"] = [
-            (start_t, end_t, max_soh) for start_t, end_t in valid_instances
-        ]
-
+        context.metadata["instances"] = result_instances
         return context

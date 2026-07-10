@@ -13,22 +13,13 @@ class StatsEnrichHandler(PipelineHandler):
 
     def handle(self, context: SampleContext) -> SampleContext:
         instances = context.metadata.get("instances")
-        output_path = context.output_path
 
         if not instances:
             return context
 
-        if output_path is None:
-            context.interrupted = "no output path"
-            return context
-
-        if output_path.is_dir():
-            target_files = list(output_path.glob("*.hdf"))
-        else:
-            target_files = [output_path]
-
+        target_files = context.metadata.get("target_files")
         if not target_files:
-            context.interrupted = f"no hdf files found at {output_path}"
+            context.interrupted = "no target files"
             return context
 
         for file_path in target_files:

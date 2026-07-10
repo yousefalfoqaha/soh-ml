@@ -962,7 +962,7 @@ wheels = [
 [[package]]
 name = "voltgan"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "asammdf" },
     { name = "h5py" },

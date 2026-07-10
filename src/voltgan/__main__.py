@@ -9,6 +9,10 @@ def _usage():
     print("  train-estimator   Run SoH estimator model training")
     print("  infer-generator   Run generator inference on an HDF file")
     print("  infer-estimator   Run SoH estimator inference on an HDF file")
+    print("  evaluate-estimator  Evaluate SoH estimator across MCU files")
+    print("  inspect           Inspect structure and contents of an HDF file")
+    print("  plot-soh          Plot SoH degradation curve per MCU")
+    print("  plot-soh-trajectories  Plot SoH trajectories across all MCUs")
     sys.exit(1)
 
 
@@ -34,8 +38,24 @@ match command:
         from voltgan.infer_estimator import main
 
         main()
+    case "evaluate-estimator":
+        from voltgan.evaluate_estimator import main
+
+        main()
     case "pre":
         from voltgan.pre import main
+
+        main()
+    case "inspect":
+        from voltgan.inspect import main
+
+        main()
+    case "plot-soh":
+        from voltgan.plot_soh import main
+
+        main()
+    case "plot-soh-trajectories":
+        from voltgan.plot_soh_trajectories import main
 
         main()
     case _:

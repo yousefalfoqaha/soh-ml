@@ -17,16 +17,15 @@ class DischargeInstance:
             assert isinstance(group, h5py.Group)
             signal = cast(h5py.Dataset, group["U"])
 
-            self.type = filepath.parts[4]
             self.n_samples = len(signal)
 
-            soh_file = f.attrs.get("soh_file")
+            soh_file = f.attrs.get("curve_soh")
             ambient_temperature = f.attrs.get("ambient_temperature")
             assert isinstance(soh_file, (float, np.floating))
             assert isinstance(ambient_temperature, (float, np.floating))
 
-            self.soh = soh_file
-            self.ambient_temperature = ambient_temperature
+            self.soh = float(soh_file)
+            self.ambient_temperature = float(ambient_temperature)
 
     def _load(self) -> np.ndarray:
         with h5py.File(self.filepath, "r") as f:

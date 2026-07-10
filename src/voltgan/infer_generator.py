@@ -43,7 +43,7 @@ def _read_hdf(
         voltage = _load("U")
         temperature = _load("Temp[1]")
 
-        soh = float(f.attrs.get("soh_file", 1.0))
+        soh = float(f.attrs.get("curve_soh", 1.0))
         ambient_temperature = float(f.attrs.get("ambient_temperature", 25.0))
 
     return (

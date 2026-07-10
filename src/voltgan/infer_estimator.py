@@ -11,14 +11,15 @@ import numpy as np
 import torch
 
 from voltgan.config import (
-    EMBEDDING_DIM,
+    CONV_CHANNELS,
+    CONV_KERNEL_SIZES,
+    CONV_STRIDES,
     ESTIMATOR_CHECKPOINT_PATH,
     ESTIMATOR_N_CONDITIONS,
-    FEEDFORWARD_DIM,
+    GRU_HIDDEN_SIZE,
+    GRU_N_LAYERS,
     HDF_ROOT,
     INPUT_FEATURES,
-    N_BLOCKS,
-    N_HEADS,
     STATS_PATH,
     WINDOW_SIZE,
 )
@@ -41,12 +42,12 @@ def _load_model(device: str) -> torch.nn.Module:
     model = SohEstimator(
         input_features=INPUT_FEATURES,
         n_conditions=ESTIMATOR_N_CONDITIONS,
-        embedding_dim=EMBEDDING_DIM,
-        feedforward_dim=FEEDFORWARD_DIM,
-        n_heads=N_HEADS,
-        n_blocks=N_BLOCKS,
+        conv_channels=CONV_CHANNELS,
+        conv_kernel_sizes=CONV_KERNEL_SIZES,
+        conv_strides=CONV_STRIDES,
+        gru_hidden_size=GRU_HIDDEN_SIZE,
+        gru_n_layers=GRU_N_LAYERS,
         dropout=0.0,
-        max_length=WINDOW_SIZE,
     ).to(device)
 
     state_dict = torch.load(ESTIMATOR_CHECKPOINT_PATH, map_location=device)

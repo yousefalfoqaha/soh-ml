@@ -5,6 +5,7 @@ import h5py
 import numpy as np
 
 from voltgan.pipeline.base import discover
+from voltgan.utils.box_table import print_box_table
 
 
 class Standardizer:
@@ -44,7 +45,7 @@ class Standardizer:
                     channel_stats[key]["m2_sum"] += m2
                     channel_stats[key]["sum_sq"] += mean * mean * n_rows
 
-                soh_file = f.attrs.get("soh_file")
+                soh_file = f.attrs.get("curve_soh")
                 if soh_file is not None:
                     soh_values.append(float(soh_file))
 
@@ -64,7 +65,7 @@ class Standardizer:
             }
 
         if not soh_values:
-            raise ValueError("No soh_file attributes found across discovered files.")
+            raise ValueError("No curve_soh attributes found across discovered files.")
 
         soh_array = np.asarray(soh_values, dtype=np.float64)
         soh_mean = float(soh_array.mean())
@@ -91,29 +92,15 @@ class Standardizer:
             print("No stats available to display.")
             return
 
-        col1_w = max(len(channel) for channel in stats.keys())
-        col1_w = max(col1_w, 12)
-        col2_w = 12
-        col3_w = 20
-
-        top_border = f"┌{'─' * (col1_w + 2)}┬{'─' * (col2_w + 2)}┬{'─' * (col3_w + 2)}┐"
-        middle_border = (
-            f"├{'─' * (col1_w + 2)}┼{'─' * (col2_w + 2)}┼{'─' * (col3_w + 2)}┤"
+        headers = ["Channel", "Mean", "Standard Deviation"]
+        rows = [
+            [channel, f"{s['mean']:.4f}", f"{s['standard_deviation']:.4f}"]
+            for channel, s in stats.items()
+        ]
+        print_box_table(
+            headers,
+            rows,
+            alignments=["left", "right", "right"],
+            min_widths=[12, 12, 20],
         )
-        bottom_border = (
-            f"└{'─' * (col1_w + 2)}┴{'─' * (col2_w + 2)}┴{'─' * (col3_w + 2)}┘"
-        )
-
-        print(top_border)
-        print(
-            f"│ {'Channel':<{col1_w}} │ {'Mean':>{col2_w}} │ {'Standard Deviation':>{col3_w}} │"
-        )
-        print(middle_border)
-        for channel, s in stats.items():
-            mean_val = s.get("mean", 0.0)
-            std_val = s.get("standard_deviation", 0.0)
-            print(
-                f"│ {channel:<{col1_w}} │ {mean_val:>{col2_w}.4f} │ {std_val:>{col3_w}.4f} │"
-            )
-        print(bottom_border)
         print()
