@@ -18,19 +18,19 @@ from voltgan.config import (
     CONV_KERNEL_SIZES,
     CONV_STRIDES,
     ESTIMATOR_CHECKPOINT_PATH,
+    ESTIMATOR_INPUT_FEATURES,
     ESTIMATOR_N_CONDITIONS,
     GRU_HIDDEN_SIZE,
     GRU_N_LAYERS,
     HDF_ROOT,
-    INPUT_FEATURES,
     PLOTS_PATH,
     STATS_PATH,
     WINDOW_SIZE,
 )
 from voltgan.data import DischargeInstance
 from voltgan.models import SohEstimator
-from voltgan.pipeline.base import discover
 from voltgan.utils.box_table import print_box_table
+from voltgan.utils.discover import discover
 
 _REF_TEMP = (23.0, 27.0)
 _MODERATE_TEMP = (-10.0, 10.0)
@@ -41,7 +41,7 @@ def _load_model(device: str) -> torch.nn.Module:
         raise ValueError("No estimator checkpoint found.")
 
     model = SohEstimator(
-        input_features=INPUT_FEATURES,
+        input_features=ESTIMATOR_INPUT_FEATURES,
         n_conditions=ESTIMATOR_N_CONDITIONS,
         conv_channels=CONV_CHANNELS,
         conv_kernel_sizes=CONV_KERNEL_SIZES,
@@ -115,7 +115,8 @@ def _evaluate_mcu(
 
         voltage_std = _standardize(raw[:, 0], stats["U"])
         current_std = _standardize(raw[:, 1], stats["I"])
-        temperature_std = _standardize(raw[:, 2], stats["Temp[1]"])
+        thermal_rise = raw[:, 2] - instance.ambient_temperature
+        temperature_std = _standardize(thermal_rise, stats["temp_delta"])
         ambient_std = _standardize(
             instance.ambient_temperature, stats["ambient_temperature"]
         )
@@ -186,7 +187,17 @@ def _group_metrics(group: list[dict]) -> dict:
     }
 
 
-_EVAL_HEADERS = ["Group", "Files", "RMSE", "MAE", "MaxAE", "R2", "MeanErr", "%Err", "PredStd"]
+_EVAL_HEADERS = [
+    "Group",
+    "Files",
+    "RMSE",
+    "MAE",
+    "MaxAE",
+    "R2",
+    "MeanErr",
+    "%Err",
+    "PredStd",
+]
 _EVAL_ALIGNMENTS = ["left"] + ["right"] * 8
 
 
@@ -205,7 +216,9 @@ def _group_row(label: str, m: dict) -> list[str]:
     ]
 
 
-def _print_group_table(title: str, order: list[str], groups: dict[str, list[dict]]) -> dict[str, dict]:
+def _print_group_table(
+    title: str, order: list[str], groups: dict[str, list[dict]]
+) -> dict[str, dict]:
     print(f"\n== {title} ==")
 
     rows: list[list[str]] = []
@@ -374,3 +387,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

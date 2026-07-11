@@ -5,6 +5,7 @@ from voltgan.config import (
     RASTER_FREQUENCY,
     REFERENCE_CURRENT_RANGE,
     REFERENCE_TEMPERATURE_RANGE,
+    STATS_PATH,
     TESTING_MCUS,
     TRAINING_MCUS,
     VALIDATION_MCUS,
@@ -20,6 +21,7 @@ from voltgan.pipeline import (
 )
 from voltgan.pipeline.ambient_temperature import AmbientTemperatureHandler
 from voltgan.pipeline.soh_curve import fit_soh_curves
+from voltgan.utils.discover import load_instances
 
 _PIPELINE_HANDLERS = [
     ChannelValidationHandler(CHANNELS, "ClimaTemp"),
@@ -45,8 +47,9 @@ def main():
         ref_current_range=REFERENCE_CURRENT_RANGE,
     )
 
-    standardizer = Standardizer(DATA_PATH)
-    standardizer.compute(TRAINING_MCUS)
+    instances = load_instances(DATA_PATH / "hdf", TRAINING_MCUS)
+    standardizer = Standardizer(STATS_PATH)
+    standardizer.compute(instances)
     standardizer.save()
 
     print("Preprocessing complete.")

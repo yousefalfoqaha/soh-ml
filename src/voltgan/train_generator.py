@@ -1,38 +1,31 @@
-from typing import cast
-
-import matplotlib
-
-matplotlib.use("Agg")
-import torch
-import torch._inductor.config as inductor_config
-from torch.optim.lr_scheduler import LRScheduler
-
-inductor_config.max_autotune_gemm = False
 import signal
 
-from torch.nn import Module
+import torch
+import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
-from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 from voltgan.config import (
+    AUTOENCODER_EPOCHS,
     BATCH_SIZE,
-    CHUNK_SIZE,
-    DATA_PATH,
-    DROPOUT,
+    CONV_BASE_CHANNELS,
+    CONV_CHANNEL_MULTS,
+    CONV_KERNEL_SIZE,
     GENERATOR_CHECKPOINT_PATH,
-    GENERATOR_N_CONDITIONS,
-    HIDDEN_SIZE,
-    INPUT_FEATURES,
+    GENERATOR_STATS_PATH,
+    HDF_ROOT,
+    LATENT_DIM,
+    LATENT_LENGTH,
     LEARNING_RATE,
-    N_EPOCHS,
-    N_LAYERS,
+    LEAVE_OUT_TEMPERATURE_RANGE,
+    PADDED_LENGTH,
     RANDOM_SEED,
     TRAINING_MCUS,
     VALIDATION_MCUS,
 )
 from voltgan.data import DischargeDataset, Standardizer
 from voltgan.models import BatterySequenceGenerator
+from voltgan.utils.discover import filter_by_temperature, load_instances
 
 _interrupted = False
 
@@ -59,21 +52,19 @@ def collate_fn(batch):
         y_list.append(item[2])
 
     lengths = torch.tensor([len(x) for x in X_list], dtype=torch.int64)
-    max_length = max(lengths).item()
 
-    # (batch_size, max_length)
     X_padded = pad_sequence(X_list, batch_first=True, padding_value=0.0)
     y_padded = pad_sequence(y_list, batch_first=True, padding_value=0.0)
 
-    # (batch_size, 2)
+    if X_padded.size(1) < PADDED_LENGTH:
+        pad_len = PADDED_LENGTH - X_padded.size(1)
+        X_padded = F.pad(X_padded, (0, 0, 0, pad_len))
+        y_padded = F.pad(y_padded, (0, 0, 0, pad_len))
+
     conditions_stacked = torch.stack(conditions_list, dim=0)
 
-    indices = torch.arange(max_length).expand(len(lengths), max_length)
-
-    # (batch_size, max_length)
+    indices = torch.arange(PADDED_LENGTH).expand(len(lengths), PADDED_LENGTH)
     mask = indices < lengths.unsqueeze(1)
-
-    # (batch_size, max_length, 1)
     mask = mask.unsqueeze(-1)
 
     return X_padded, conditions_stacked, y_padded, mask
@@ -86,23 +77,24 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    hdf_data_path = DATA_PATH / "hdf"
-    mcus = TRAINING_MCUS + VALIDATION_MCUS
+    train_instances = load_instances(HDF_ROOT, TRAINING_MCUS)
+    train_instances = filter_by_temperature(
+        train_instances, LEAVE_OUT_TEMPERATURE_RANGE, exclude=True
+    )
+    print(f"Training instances after temp filter: {len(train_instances)}")
 
-    standardizer = Standardizer(DATA_PATH)
-    stats = standardizer.compute(mcus)
+    val_instances = load_instances(HDF_ROOT, VALIDATION_MCUS)
+    val_instances = filter_by_temperature(
+        val_instances, LEAVE_OUT_TEMPERATURE_RANGE, exclude=False
+    )
+    print(f"Validation instances (0C only): {len(val_instances)}")
+
+    standardizer = Standardizer(GENERATOR_STATS_PATH)
+    stats = standardizer.compute(train_instances)
     standardizer.save()
 
-    training_dataset = DischargeDataset(
-        mcus=TRAINING_MCUS,
-        data_path=hdf_data_path,
-        stats=stats,
-    )
-    validation_dataset = DischargeDataset(
-        mcus=VALIDATION_MCUS,
-        data_path=hdf_data_path,
-        stats=stats,
-    )
+    training_dataset = DischargeDataset(instances=train_instances, stats=stats)
+    validation_dataset = DischargeDataset(instances=val_instances, stats=stats)
 
     training_loader = DataLoader(
         training_dataset,
@@ -126,136 +118,93 @@ def main():
     )
 
     model = BatterySequenceGenerator(
-        input_features=INPUT_FEATURES,
-        n_conditions=GENERATOR_N_CONDITIONS,
-        hidden_size=HIDDEN_SIZE,
-        n_layers=N_LAYERS,
-        dropout=DROPOUT,
+        padded_length=PADDED_LENGTH,
+        latent_length=LATENT_LENGTH,
+        latent_dim=LATENT_DIM,
+        conv_base_channels=CONV_BASE_CHANNELS,
+        conv_channel_mults=CONV_CHANNEL_MULTS,
+        conv_kernel_size=CONV_KERNEL_SIZE,
     ).to(device)
 
-    criterion = torch.nn.HuberLoss(reduction="none")
+    n_params = sum(p.numel() for p in model.parameters())
+    print(f"Model parameters: {n_params:,}")
 
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=N_EPOCHS,
-        eta_min=5e-5,
-    )
-    compiled_model = cast(BatterySequenceGenerator, torch.compile(model))
-
-    train_and_validate(
-        compiled_model,
-        optimizer,
-        scheduler,
-        criterion,
-        training_loader,
-        validation_loader,
-        N_EPOCHS,
-        device,
+        optimizer, T_max=AUTOENCODER_EPOCHS, eta_min=5e-5
     )
 
-    torch.save(model.state_dict(), GENERATOR_CHECKPOINT_PATH)
-    print(f"Model saved → {GENERATOR_CHECKPOINT_PATH}")
-
-
-def _detach_hidden_state(hidden_state):
-    if hidden_state is None:
-        return None
-    return tuple(h.detach() for h in hidden_state)
-
-
-def train_and_validate(
-    model: BatterySequenceGenerator,
-    optimizer: Optimizer,
-    scheduler: LRScheduler,
-    criterion: Module,
-    training_loader: DataLoader,
-    validation_loader: DataLoader,
-    n_epochs: int,
-    device: str,
-) -> None:
     print(
-        f"Train batches: {len(training_loader)} | Validation batches: {len(validation_loader)}"
+        f"\nTrain batches: {len(training_loader)} | "
+        f"Validation batches: {len(validation_loader)}"
     )
-    print(f"Starting training for {n_epochs} epochs...")
+    print(f"Training Conv Autoencoder for {AUTOENCODER_EPOCHS} epochs...")
 
-    for epoch in range(n_epochs):
-        total_training_loss = 0.0
-        train_batch_count = 0
-
+    for epoch in range(AUTOENCODER_EPOCHS):
         model.train()
-        for X, conditions, y, mask in training_loader:
-            X = X.to(device, non_blocking=True)
+        total_loss = 0.0
+        total_v_loss = 0.0
+        total_t_loss = 0.0
+        n_batches = 0
+
+        for _, _, y, mask in training_loader:
             y = y.to(device, non_blocking=True)
-            conditions = conditions.to(device, non_blocking=True)
             mask = mask.to(device, non_blocking=True)
-
-            max_length = mask.size(1)
-
-            hidden_state = None
-            batch_loss_sum = 0.0
-            batch_valid_sum = mask.sum().item() + 1e-8
 
             optimizer.zero_grad(set_to_none=True)
 
-            for start in range(0, max_length, CHUNK_SIZE):
-                hidden_state = _detach_hidden_state(hidden_state)
+            y_pred = model(y)
+            diff = (y_pred - y) ** 2
+            loss = (diff * mask).sum() / (mask.sum() + 1e-8)
 
-                X_chunk = X[:, start : start + CHUNK_SIZE, :]
-                y_chunk = y[:, start : start + CHUNK_SIZE, :]
-                mask_chunk = mask[:, start : start + CHUNK_SIZE, :]
-
-                y_pred_chunk, hidden_state = model(X_chunk, conditions, hidden_state)
-
-                loss_chunk_raw = criterion(y_pred_chunk, y_chunk)
-
-                loss_chunk = (loss_chunk_raw * mask_chunk).sum()
-
-                scaled_chunk_loss = loss_chunk / batch_valid_sum
-                scaled_chunk_loss.backward()
-
-                batch_loss_sum += loss_chunk.item()
-
+            loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
-            total_training_loss += batch_loss_sum / batch_valid_sum
-            train_batch_count += 1
+            total_loss += loss.item()
+            total_v_loss += (diff[:, :, 0:1] * mask).sum().item() / (
+                mask.sum().item() + 1e-8
+            )
+            total_t_loss += (diff[:, :, 1:2] * mask).sum().item() / (
+                mask.sum().item() + 1e-8
+            )
+            n_batches += 1
 
         scheduler.step()
 
-        total_validation_loss = 0.0
-        val_batch_count = 0
-
         model.eval()
+        val_loss = 0.0
+        val_batches = 0
+
         with torch.no_grad():
-            for X, conditions, y, mask in validation_loader:
-                X = X.to(device, non_blocking=True)
+            for _, _, y, mask in validation_loader:
                 y = y.to(device, non_blocking=True)
-                conditions = conditions.to(device, non_blocking=True)
                 mask = mask.to(device, non_blocking=True)
 
-                y_pred, _ = model(X, conditions)
+                y_pred = model(y)
+                diff = (y_pred - y) ** 2
+                v_loss = (diff * mask).sum() / (mask.sum() + 1e-8)
+                val_loss += v_loss.item()
+                val_batches += 1
 
-                raw_val_loss = criterion(y_pred, y)
-
-                val_loss = (raw_val_loss * mask).sum() / (mask.sum() + 1e-8)
-
-                total_validation_loss += val_loss.item()
-                val_batch_count += 1
-
-        mean_training_loss = total_training_loss / max(1, train_batch_count)
-        mean_validation_loss = total_validation_loss / max(1, val_batch_count)
+        mean_train = total_loss / max(1, n_batches)
+        mean_train_v = total_v_loss / max(1, n_batches)
+        mean_train_t = total_t_loss / max(1, n_batches)
+        mean_val = val_loss / max(1, val_batches)
 
         print(
-            f"Epoch {epoch + 1:02d}/{n_epochs} | "
-            f"Train Loss: {mean_training_loss:.5f} | "
-            f"Valid Loss: {mean_validation_loss:.5f}"
+            f"Epoch {epoch + 1:02d}/{AUTOENCODER_EPOCHS} | "
+            f"Train: {mean_train:.5f} (V={mean_train_v:.5f} T={mean_train_t:.5f}) | "
+            f"Valid: {mean_val:.5f}"
         )
 
         if _interrupted:
             break
 
+    torch.save(model.state_dict(), GENERATOR_CHECKPOINT_PATH)
+    print(f"Model saved -> {GENERATOR_CHECKPOINT_PATH}")
+
 
 if __name__ == "__main__":
     main()
+

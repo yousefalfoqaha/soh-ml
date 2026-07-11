@@ -44,7 +44,11 @@ class StatsEnrichHandler(PipelineHandler):
 
                 f.attrs[f"{channel}_mean"] = float(np.mean(data))
                 f.attrs[f"{channel}_m2"] = float(np.var(data) * total_rows)
+                f.attrs[f"{channel}_min"] = float(np.min(data))
+                f.attrs[f"{channel}_max"] = float(np.max(data))
 
             f.attrs["total_rows"] = total_rows
             f.attrs["ambient_temperature_mean"] = f.attrs["ambient_temperature"]
             f.attrs["ambient_temperature_m2"] = 0.0
+            f.attrs["ambient_temperature_min"] = f.attrs["ambient_temperature"]
+            f.attrs["ambient_temperature_max"] = f.attrs["ambient_temperature"]

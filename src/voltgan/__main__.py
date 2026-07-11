@@ -10,6 +10,7 @@ def _usage():
     print("  infer-generator   Run generator inference on an HDF file")
     print("  infer-estimator   Run SoH estimator inference on an HDF file")
     print("  evaluate-estimator  Evaluate SoH estimator across MCU files")
+    print("  evaluate-generator  Evaluate sequence generator across MCU files")
     print("  inspect           Inspect structure and contents of an HDF file")
     print("  plot-soh          Plot SoH degradation curve per MCU")
     print("  plot-soh-trajectories  Plot SoH trajectories across all MCUs")
@@ -40,6 +41,10 @@ match command:
         main()
     case "evaluate-estimator":
         from voltgan.evaluate_estimator import main
+
+        main()
+    case "evaluate-generator":
+        from voltgan.evaluate_generator import main
 
         main()
     case "pre":

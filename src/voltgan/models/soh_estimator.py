@@ -16,6 +16,7 @@ class FilmConditioning(nn.Module):
         else:
             scale = self.cond_scale(conditions).unsqueeze(1)
             shift = self.cond_shift(conditions).unsqueeze(1)
+
         return self.dropout(sequence * (1.0 + scale) + shift)
 
 
@@ -83,9 +84,7 @@ class SohEstimator(nn.Module):
 
     def forward(self, X, conditions):
         x = X.permute(0, 2, 1)
-
         x = self.conv_stack(x)
-
         x = x.permute(0, 2, 1)
 
         x = self.final_film(x, conditions)
@@ -93,7 +92,6 @@ class SohEstimator(nn.Module):
         _, h_n = self.gru(x)
 
         pooled = torch.cat([h_n[-2], h_n[-1]], dim=1)
-
         pooled = self.dropout(pooled)
 
         return self.output(pooled)

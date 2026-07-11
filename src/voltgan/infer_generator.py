@@ -8,15 +8,17 @@ import h5py
 import matplotlib
 
 from voltgan.config import (
+    CONV_BASE_CHANNELS,
+    CONV_CHANNEL_MULTS,
+    CONV_KERNEL_SIZE,
     GENERATOR_CHECKPOINT_PATH,
-    GENERATOR_N_CONDITIONS,
+    GENERATOR_STATS_PATH,
     HDF_ROOT,
-    HIDDEN_SIZE,
-    INPUT_FEATURES,
+    LATENT_DIM,
+    LATENT_LENGTH,
     MAX_SEQUENCE_LENGTH,
-    N_LAYERS,
+    PADDED_LENGTH,
     PLOTS_PATH,
-    STATS_PATH,
 )
 from voltgan.models import BatterySequenceGenerator
 
@@ -65,11 +67,12 @@ def _destandardize(arr: np.ndarray, s: dict) -> np.ndarray:
 
 def _load_model(device: str) -> torch.nn.Module:
     model = BatterySequenceGenerator(
-        input_features=INPUT_FEATURES,
-        n_conditions=GENERATOR_N_CONDITIONS,
-        hidden_size=HIDDEN_SIZE,
-        n_layers=N_LAYERS,
-        dropout=0.0,
+        padded_length=PADDED_LENGTH,
+        latent_length=LATENT_LENGTH,
+        latent_dim=LATENT_DIM,
+        conv_base_channels=CONV_BASE_CHANNELS,
+        conv_channel_mults=CONV_CHANNEL_MULTS,
+        conv_kernel_size=CONV_KERNEL_SIZE,
     ).to(device)
 
     if GENERATOR_CHECKPOINT_PATH.exists():
@@ -87,37 +90,30 @@ def _load_model(device: str) -> torch.nn.Module:
 @torch.no_grad()
 def run_inference(
     model: torch.nn.Module,
-    current: np.ndarray,
-    conditions: np.ndarray,
+    y_true_std: np.ndarray,
     device: str,
 ) -> np.ndarray:
 
-    # (sequence_length, 1) -> (1, sequence_length, 1)
-    x_input = np.stack([current], axis=1).astype(np.float32)
-    x_tensor = torch.tensor(x_input, dtype=torch.float32).unsqueeze(0).to(device)
+    y_tensor = torch.tensor(y_true_std, dtype=torch.float32).unsqueeze(0).to(device)
 
-    # (1, conditions_size)
-    conditions_tensor = (
-        torch.tensor(conditions, dtype=torch.float32).view(1, -1).to(device)
-    )
+    prediction_tensor = model(y_tensor)
 
-    prediction_tensor, _ = model(x_tensor, conditions_tensor, None)
-
-    # (sequence_length, output_features)
-    return prediction_tensor.squeeze(0).cpu().numpy()
+    n = y_true_std.shape[0]
+    return prediction_tensor.squeeze(0).cpu().numpy()[:n]
 
 
 def _plot(
     y_true: np.ndarray,
     y_prediction: np.ndarray,
     stats: dict,
+    ambient_temperature: float,
     stem: str,
 ) -> None:
     voltage_true = _destandardize(y_true[:, 0], stats["U"])
-    temperature_true = _destandardize(y_true[:, 1], stats["Temp[1]"])
+    temperature_true = _destandardize(y_true[:, 1], stats["temp_delta"]) + ambient_temperature
 
     voltage_prediction = _destandardize(y_prediction[:, 0], stats["U"])
-    temperature_prediction = _destandardize(y_prediction[:, 1], stats["Temp[1]"])
+    temperature_prediction = _destandardize(y_prediction[:, 1], stats["temp_delta"]) + ambient_temperature
 
     timesteps = np.arange(len(y_true))
 
@@ -209,19 +205,20 @@ def main() -> None:
         f"I ∈ [{current.min():.2f}, {current.max():.2f}] A"
     )
 
-    if not STATS_PATH.exists():
+    if not GENERATOR_STATS_PATH.exists():
         raise FileNotFoundError(
-            f"Stats file not found at {STATS_PATH}. Run training first to generate it."
+            f"Stats file not found at {GENERATOR_STATS_PATH}. Run training first to generate it."
         )
-    with open(STATS_PATH) as f:
+    with open(GENERATOR_STATS_PATH) as f:
         stats = json.load(f)
-    print(f"Stats loaded from {STATS_PATH}")
+    print(f"Stats loaded from {GENERATOR_STATS_PATH}")
 
     current_std = _standardize(current, stats["I"])
     voltage_std = _standardize(voltage, stats["U"])
-    temperature_std = _standardize(temperature, stats["Temp[1]"])
+    thermal_rise = temperature - ambient_temperature
+    temp_delta_std = _standardize(thermal_rise, stats["temp_delta"])
 
-    y_true_std = np.stack([voltage_std, temperature_std], axis=1).astype(np.float32)
+    y_true_std = np.stack([voltage_std, temp_delta_std], axis=1).astype(np.float32)
 
     model = _load_model(device)
 
@@ -231,11 +228,10 @@ def main() -> None:
 
     soh_std = (soh - stats["soh"]["mean"]) / stats["soh"]["standard_deviation"]
 
-    conditions = np.array([soh_std, amb_std])
-    y_prediction_std = run_inference(model, current_std, conditions, device)
+    y_prediction_std = run_inference(model, y_true_std, device)
 
     stem = hdf_path.stem[:40]
-    _plot(y_true_std, y_prediction_std, stats, stem)
+    _plot(y_true_std, y_prediction_std, stats, ambient_temperature, stem)
 
 
 if __name__ == "__main__":

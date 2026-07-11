@@ -16,7 +16,7 @@ from voltgan.config import (
     REFERENCE_CURRENT_RANGE,
     REFERENCE_TEMPERATURE_RANGE,
 )
-from voltgan.pipeline.base import discover
+from voltgan.utils.discover import discover
 from voltgan.pipeline.soh_curve import fit_soh_curve, select_reference_points
 
 

@@ -1,24 +1,19 @@
-from pathlib import Path
-
 import numpy as np
 import torch
 
 from voltgan.data.instance import DischargeInstance
-from voltgan.pipeline.base import discover
 
 
 class DischargeDataset(torch.utils.data.Dataset):
     def __init__(
         self,
-        mcus: list[str],
-        data_path: Path,
+        instances: list[DischargeInstance],
         stats: dict,
     ):
         self._means = np.array(
             [
                 stats["U"]["mean"],
                 stats["I"]["mean"],
-                stats["Temp[1]"]["mean"],
                 stats["ambient_temperature"]["mean"],
                 stats["soh"]["mean"],
             ],
@@ -28,18 +23,17 @@ class DischargeDataset(torch.utils.data.Dataset):
             [
                 stats["U"]["standard_deviation"],
                 stats["I"]["standard_deviation"],
-                stats["Temp[1]"]["standard_deviation"],
                 stats["ambient_temperature"]["standard_deviation"],
                 stats["soh"]["standard_deviation"],
             ],
             dtype=np.float32,
         )
 
-        self.instances: list[DischargeInstance] = []
-        for hdf_path in discover(data_path, mcus, (".hdf",)):
-            sample = DischargeInstance(filepath=hdf_path)
-            self.instances.append(sample)
-        print(f"Loaded {len(self.instances)} instances from {len(mcus)} MCU(s).")
+        self._temp_delta_mean = stats["temp_delta"]["mean"]
+        self._temp_delta_std = stats["temp_delta"]["standard_deviation"]
+
+        self.instances = instances
+        print(f"Loaded {len(self.instances)} instances.")
 
     def __len__(self):
         return len(self.instances)
@@ -53,13 +47,15 @@ class DischargeDataset(torch.utils.data.Dataset):
 
         voltage = (raw_voltage - self._means[0]) / self._standard_deviations[0]
         current = (raw_current - self._means[1]) / self._standard_deviations[1]
-        temperature = (raw_temperature - self._means[2]) / self._standard_deviations[2]
+
+        thermal_rise = raw_temperature - instance.ambient_temperature
+        temperature = (thermal_rise - self._temp_delta_mean) / self._temp_delta_std
 
         ambient_temperature = (
-            instance.ambient_temperature - self._means[3]
-        ) / self._standard_deviations[3]
+            instance.ambient_temperature - self._means[2]
+        ) / self._standard_deviations[2]
 
-        soh = (instance.soh - self._means[4]) / self._standard_deviations[4]
+        soh = (instance.soh - self._means[3]) / self._standard_deviations[3]
 
         voltage = torch.from_numpy(voltage).float()
         current = torch.from_numpy(current).float()

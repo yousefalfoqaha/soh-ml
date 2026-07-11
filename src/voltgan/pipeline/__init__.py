@@ -1,5 +1,5 @@
 from voltgan.pipeline.ambient_temperature import AmbientTemperatureHandler
-from voltgan.pipeline.base import Pipeline, PipelineHandler, SampleContext, discover
+from voltgan.pipeline.base import Pipeline, PipelineHandler, SampleContext
 from voltgan.pipeline.channel_validation import ChannelValidationHandler
 from voltgan.pipeline.extract_discharge_periods import ExtractDischargePeriodsHandler
 from voltgan.pipeline.hdf_converter import HdfConvertHandler

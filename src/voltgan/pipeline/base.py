@@ -4,9 +4,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Generator
 
 from asammdf import MDF
+
+from voltgan.utils.discover import discover
 
 _DATETIME_PATTERN = re.compile(r"(\d{4}-\d{2}-\d{2})[_ ](\d{2}\.\d{2}\.\d{2})")
 
@@ -27,20 +28,6 @@ class PipelineHandler(ABC):
     def order(self) -> int: ...
     @abstractmethod
     def handle(self, context: SampleContext) -> SampleContext: ...
-
-
-def discover(
-    root: Path, mcus: list[str], extensions: tuple[str, ...]
-) -> Generator[Path, None, None]:
-    for mcu in mcus:
-        mcu_path = root / mcu
-        if not mcu_path.exists():
-            print(f"Source directory missing, skipping MCU: {mcu_path}")
-            continue
-
-        for path in sorted(mcu_path.rglob("*")):
-            if path.is_file() and path.suffix.lower() in extensions:
-                yield path
 
 
 def _parse_datetime(path: Path) -> datetime:

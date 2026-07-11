@@ -15,11 +15,11 @@ from voltgan.config import (
     CONV_KERNEL_SIZES,
     CONV_STRIDES,
     ESTIMATOR_CHECKPOINT_PATH,
+    ESTIMATOR_INPUT_FEATURES,
     ESTIMATOR_N_CONDITIONS,
     GRU_HIDDEN_SIZE,
     GRU_N_LAYERS,
     HDF_ROOT,
-    INPUT_FEATURES,
     STATS_PATH,
     WINDOW_SIZE,
 )
@@ -40,7 +40,7 @@ def _load_model(device: str) -> torch.nn.Module:
         raise ValueError("No estimator checkpoint found.")
 
     model = SohEstimator(
-        input_features=INPUT_FEATURES,
+        input_features=ESTIMATOR_INPUT_FEATURES,
         n_conditions=ESTIMATOR_N_CONDITIONS,
         conv_channels=CONV_CHANNELS,
         conv_kernel_sizes=CONV_KERNEL_SIZES,
@@ -131,7 +131,8 @@ def main() -> None:
     raw = instance.data
     voltage_std = _standardize(raw[:, 0], stats["U"])
     current_std = _standardize(raw[:, 1], stats["I"])
-    temperature_std = _standardize(raw[:, 2], stats["Temp[1]"])
+    thermal_rise = raw[:, 2] - instance.ambient_temperature
+    temperature_std = _standardize(thermal_rise, stats["temp_delta"])
     ambient_temperature = _standardize(
         instance.ambient_temperature, stats["ambient_temperature"]
     )

@@ -4,28 +4,28 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from voltgan.pipeline.base import discover
+from voltgan.data.instance import DischargeInstance
 from voltgan.utils.box_table import print_box_table
 
 
 class Standardizer:
-    def __init__(self, data_path: Path):
-        self.data_path = data_path
+    def __init__(self, stats_path: Path):
+        self.stats_path = stats_path
         self.stats = {}
 
-    def compute(self, mcus: list[str]) -> dict[str, dict[str, float]]:
+    def compute(self, instances: list[DischargeInstance]) -> dict[str, dict[str, float]]:
         channel_stats: dict[str, dict[str, float]] = {}
         total_rows = 0
 
         soh_values: list[float] = []
+        temp_rises: list[float] = []
 
-        data_path = self.data_path / "hdf"
-        for hdf_path in discover(data_path, mcus, (".hdf",)):
-            with h5py.File(hdf_path, "r") as f:
+        for instance in instances:
+            with h5py.File(instance.filepath, "r") as f:
                 n_rows = int(f.attrs.get("total_rows", 0))
                 total_rows += n_rows
 
-                group = f[hdf_path.name]
+                group = f[instance.filepath.name]
                 assert isinstance(group, h5py.Group)
 
                 keys_to_process = []
@@ -48,6 +48,10 @@ class Standardizer:
                 soh_file = f.attrs.get("curve_soh")
                 if soh_file is not None:
                     soh_values.append(float(soh_file))
+
+                temp_min = float(f.attrs.get("Temp[1]_min", 0.0))
+                temp_max = float(f.attrs.get("Temp[1]_max", 0.0))
+                temp_rises.append(temp_max - temp_min)
 
         if total_rows == 0:
             raise ValueError("No data points found.")
@@ -75,14 +79,19 @@ class Standardizer:
             "standard_deviation": soh_std,
         }
 
+        temp_rise_array = np.asarray(temp_rises, dtype=np.float64)
+        result["temp_delta"] = {
+            "mean": float(temp_rise_array.mean()),
+            "standard_deviation": float(np.sqrt(max(temp_rise_array.var(), 1e-8))),
+        }
+
         self._print_stats(result, total_rows)
         self.stats = result
         return result
 
     def save(self) -> None:
-        stats_path = self.data_path / "stats.json"
-        stats_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(stats_path, "w") as f:
+        self.stats_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.stats_path, "w") as f:
             json.dump(self.stats, f, indent=2)
 
     @staticmethod

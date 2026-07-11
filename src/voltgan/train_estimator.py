@@ -19,22 +19,23 @@ from voltgan.config import (
     CONV_CHANNELS,
     CONV_KERNEL_SIZES,
     CONV_STRIDES,
-    DATA_PATH,
     DROPOUT,
     ESTIMATOR_CHECKPOINT_PATH,
+    ESTIMATOR_INPUT_FEATURES,
     ESTIMATOR_N_CONDITIONS,
     GRU_HIDDEN_SIZE,
     GRU_N_LAYERS,
-    INPUT_FEATURES,
+    HDF_ROOT,
     LEARNING_RATE,
     N_EPOCHS,
     RANDOM_SEED,
+    STATS_PATH,
     TRAINING_MCUS,
     VALIDATION_MCUS,
-    WINDOW_SIZE,
 )
 from voltgan.data import EstimatorDataset, Standardizer
 from voltgan.models import SohEstimator
+from voltgan.utils.discover import load_instances
 
 _interrupted = False
 
@@ -59,19 +60,17 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    hdf_data_path = DATA_PATH / "hdf"
-    mcus = TRAINING_MCUS + VALIDATION_MCUS
+    hdf_data_path = HDF_ROOT
 
-    standardizer = Standardizer(DATA_PATH)
-    stats = standardizer.compute(mcus)
+    train_instances = load_instances(hdf_data_path, TRAINING_MCUS)
+    val_instances = load_instances(hdf_data_path, VALIDATION_MCUS)
+
+    standardizer = Standardizer(STATS_PATH)
+    stats = standardizer.compute(train_instances)
     standardizer.save()
 
-    training_dataset = EstimatorDataset(
-        mcus=TRAINING_MCUS, data_path=hdf_data_path, stats=stats
-    )
-    validation_dataset = EstimatorDataset(
-        mcus=VALIDATION_MCUS, data_path=hdf_data_path, stats=stats
-    )
+    training_dataset = EstimatorDataset(instances=train_instances, stats=stats)
+    validation_dataset = EstimatorDataset(instances=val_instances, stats=stats)
 
     training_loader = DataLoader(
         training_dataset,
@@ -93,7 +92,7 @@ def main():
     )
 
     model = SohEstimator(
-        input_features=INPUT_FEATURES,
+        input_features=ESTIMATOR_INPUT_FEATURES,
         n_conditions=ESTIMATOR_N_CONDITIONS,
         conv_channels=CONV_CHANNELS,
         conv_kernel_sizes=CONV_KERNEL_SIZES,
