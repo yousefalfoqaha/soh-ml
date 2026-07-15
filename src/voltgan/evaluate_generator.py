@@ -22,6 +22,7 @@ from voltgan.config import (
     HDF_ROOT,
     LATENT_DIM,
     LATENT_LENGTH,
+    N_CONDITIONS_GENERATOR,
     PADDED_LENGTH,
     PLOTS_PATH,
 )
@@ -39,6 +40,7 @@ def _load_model(device: str) -> torch.nn.Module:
         raise ValueError("No generator checkpoint found.")
 
     model = BatterySequenceGenerator(
+        n_conditions=N_CONDITIONS_GENERATOR,
         padded_length=PADDED_LENGTH,
         latent_length=LATENT_LENGTH,
         latent_dim=LATENT_DIM,
@@ -84,14 +86,21 @@ def _run_inference(
     model: torch.nn.Module,
     voltage_std: np.ndarray,
     temp_delta_std: np.ndarray,
+    current_std: np.ndarray,
+    conditions_std: np.ndarray,
     device: str,
 ) -> tuple[np.ndarray, np.ndarray]:
-    y_input = np.stack([voltage_std, temp_delta_std], axis=1).astype(np.float32)
-    y_tensor = torch.tensor(y_input, dtype=torch.float32).unsqueeze(0).to(device)
+    y_vt_i = np.stack(
+        [voltage_std, temp_delta_std, current_std], axis=1
+    ).astype(np.float32)
+    y_tensor = torch.tensor(y_vt_i, dtype=torch.float32).unsqueeze(0).to(device)
+    conditions_tensor = (
+        torch.tensor(conditions_std, dtype=torch.float32).to(device)
+    )
 
-    pred_tensor = model(y_tensor)
-    n = y_input.shape[0]
-    pred = pred_tensor.squeeze(0).cpu().numpy()[:n]
+    y_hat, _, _ = model(y_tensor, conditions_tensor)
+    n = y_vt_i.shape[0]
+    pred = y_hat.squeeze(0).cpu().numpy()[:n]
 
     voltage_pred_std = pred[:, 0]
     temp_pred_std = pred[:, 1]
@@ -117,9 +126,10 @@ def _evaluate_mcu(
             _standardize(instance.ambient_temperature, stats["ambient_temperature"])
         )
         soh_std = float(_standardize(instance.soh, stats["soh"]))
+        conditions_std = np.array([[soh_std, ambient_std]], dtype=np.float32)
 
         voltage_pred_std, temp_delta_pred_std = _run_inference(
-            model, voltage_std, temp_delta_std, device
+            model, voltage_std, temp_delta_std, current_std, conditions_std, device
         )
 
         voltage_true = _destandardize(voltage_std, stats["U"])

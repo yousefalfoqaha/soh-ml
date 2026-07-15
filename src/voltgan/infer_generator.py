@@ -9,23 +9,22 @@ import matplotlib
 
 from voltgan.config import (
     CONV_BASE_CHANNELS,
-    CONV_CHANNEL_MULTS,
     CONV_KERNEL_SIZE,
     GENERATOR_CHECKPOINT_PATH,
     GENERATOR_STATS_PATH,
     HDF_ROOT,
     LATENT_DIM,
-    LATENT_LENGTH,
-    MAX_SEQUENCE_LENGTH,
+    N_CONDITIONS_GENERATOR,
     PADDED_LENGTH,
     PLOTS_PATH,
 )
-from voltgan.models import BatterySequenceGenerator
+from voltgan.models import BatteryConvGenerator
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 
 def _read_hdf(
@@ -38,8 +37,7 @@ def _read_hdf(
         def _load(ch: str) -> np.ndarray:
             dataset = group[ch]
             assert isinstance(dataset, h5py.Dataset)
-
-            return dataset[:MAX_SEQUENCE_LENGTH]
+            return dataset[:]
 
         current = _load("I")
         voltage = _load("U")
@@ -66,13 +64,14 @@ def _destandardize(arr: np.ndarray, s: dict) -> np.ndarray:
 
 
 def _load_model(device: str) -> torch.nn.Module:
-    model = BatterySequenceGenerator(
-        padded_length=PADDED_LENGTH,
-        latent_length=LATENT_LENGTH,
-        latent_dim=LATENT_DIM,
-        conv_base_channels=CONV_BASE_CHANNELS,
-        conv_channel_mults=CONV_CHANNEL_MULTS,
-        conv_kernel_size=CONV_KERNEL_SIZE,
+    # Updated to BatteryConvGenerator with correct feature dimensions
+    model = BatteryConvGenerator(
+        input_features=1,  # Generator takes Current (I)
+        output_feature=2,  # Generator predicts Voltage (U) and Temp delta (temp_delta)
+        n_conditions=N_CONDITIONS_GENERATOR,
+        base_channels=CONV_BASE_CHANNELS,
+        latent_size=LATENT_DIM,
+        kernel_size=CONV_KERNEL_SIZE,
     ).to(device)
 
     if GENERATOR_CHECKPOINT_PATH.exists():
@@ -81,7 +80,7 @@ def _load_model(device: str) -> torch.nn.Module:
         )
         print(f"Loaded weights from {GENERATOR_CHECKPOINT_PATH}")
     else:
-        raise ValueError("No model.pt found.")
+        raise ValueError(f"No checkpoint found at {GENERATOR_CHECKPOINT_PATH}")
 
     model.eval()
     return model
@@ -90,16 +89,31 @@ def _load_model(device: str) -> torch.nn.Module:
 @torch.no_grad()
 def run_inference(
     model: torch.nn.Module,
-    y_true_std: np.ndarray,
+    current_std: np.ndarray,
+    conditions_std: np.ndarray,
     device: str,
 ) -> np.ndarray:
+    orig_length = current_std.shape[0]
 
-    y_tensor = torch.tensor(y_true_std, dtype=torch.float32).unsqueeze(0).to(device)
+    # Model input is current shape: [1, sequence_length, 1]
+    X_tensor = (
+        torch.tensor(current_std, dtype=torch.float32)
+        .unsqueeze(-1)
+        .unsqueeze(0)
+        .to(device)
+    )
+    conditions_tensor = torch.tensor(conditions_std, dtype=torch.float32).to(device)
 
-    prediction_tensor = model(y_tensor)
+    # Pad the sequence to PADDED_LENGTH to prevent downsampling alignment issues
+    if orig_length < PADDED_LENGTH:
+        pad_len = PADDED_LENGTH - orig_length
+        X_tensor = F.pad(X_tensor, (0, 0, 0, pad_len))
 
-    n = y_true_std.shape[0]
-    return prediction_tensor.squeeze(0).cpu().numpy()[:n]
+    # Updated API: model returns a single output tensor
+    y_hat = model(X_tensor, conditions_tensor)
+
+    # Squeeze the batch dimension and slice back to the original unpadded sequence length
+    return y_hat.squeeze(0).cpu().numpy()[:orig_length]
 
 
 def _plot(
@@ -108,12 +122,18 @@ def _plot(
     stats: dict,
     ambient_temperature: float,
     stem: str,
+    soh_condition: float,
+    ambient_condition: float,
 ) -> None:
     voltage_true = _destandardize(y_true[:, 0], stats["U"])
-    temperature_true = _destandardize(y_true[:, 1], stats["temp_delta"]) + ambient_temperature
+    temperature_true = (
+        _destandardize(y_true[:, 1], stats["temp_delta"]) + ambient_temperature
+    )
 
     voltage_prediction = _destandardize(y_prediction[:, 0], stats["U"])
-    temperature_prediction = _destandardize(y_prediction[:, 1], stats["temp_delta"]) + ambient_temperature
+    temperature_prediction = (
+        _destandardize(y_prediction[:, 1], stats["temp_delta"]) + ambient_condition
+    )
 
     timesteps = np.arange(len(y_true))
 
@@ -125,7 +145,6 @@ def _plot(
         voltage_prediction,
         color="red",
         lw=0.8,
-        # linestyle="--",
         alpha=0.8,
         label="Pred U",
     )
@@ -141,7 +160,6 @@ def _plot(
         temperature_prediction,
         color="blue",
         lw=0.8,
-        # linestyle="--",
         alpha=0.8,
         label="Pred Temp",
     )
@@ -152,7 +170,8 @@ def _plot(
     ax_2.grid(True, alpha=0.3)
 
     fig.suptitle(
-        f"{stem}  |  Total steps = {len(y_true):,}",
+        f"{stem}  |  steps={len(y_true):,}  |  "
+        f"conditions: SoH={soh_condition:.4f}, amb={ambient_condition:.2f}°C",
         fontsize=11,
     )
 
@@ -165,19 +184,31 @@ def _plot(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run BatterySequenceGenerator inference on a single HDF file."
+        description="Run BatteryConvGenerator inference on a single HDF file."
     )
     parser.add_argument(
         "--hdf",
         type=Path,
         required=True,
-        help='Path relative to dataset/hdf/, e.g. "mcu1/aging/sample01/2025-02-12_13.11.28 Aging_….hdf"',
+        help='Path relative to dataset/hdf/, e.g. "mcu1/aging/sample01/...hdf"',
     )
     parser.add_argument(
         "--device",
         type=str,
         default=None,
         help="'cuda' or 'cpu'. Auto-detected if omitted.",
+    )
+    parser.add_argument(
+        "--ambient-temperature",
+        type=float,
+        default=None,
+        help="Override the ambient temperature (°C) used as the conditioning value.",
+    )
+    parser.add_argument(
+        "--soh",
+        type=float,
+        default=None,
+        help="Override the SoH used as the conditioning value.",
     )
     return parser.parse_args()
 
@@ -207,31 +238,65 @@ def main() -> None:
 
     if not GENERATOR_STATS_PATH.exists():
         raise FileNotFoundError(
-            f"Stats file not found at {GENERATOR_STATS_PATH}. Run training first to generate it."
+            f"Stats file not found at {GENERATOR_STATS_PATH}. Run training first."
         )
     with open(GENERATOR_STATS_PATH) as f:
         stats = json.load(f)
     print(f"Stats loaded from {GENERATOR_STATS_PATH}")
 
+    # Standardize data
     current_std = _standardize(current, stats["I"])
     voltage_std = _standardize(voltage, stats["U"])
     thermal_rise = temperature - ambient_temperature
     temp_delta_std = _standardize(thermal_rise, stats["temp_delta"])
 
+    # True targets for plot comparison
     y_true_std = np.stack([voltage_std, temp_delta_std], axis=1).astype(np.float32)
 
     model = _load_model(device)
 
-    amb_std = (ambient_temperature - stats["ambient_temperature"]["mean"]) / stats[
+    # Resolve conditioning parameters
+    soh_condition = args.soh if args.soh is not None else soh
+    ambient_condition = (
+        args.ambient_temperature
+        if args.ambient_temperature is not None
+        else ambient_temperature
+    )
+
+    amb_std = (ambient_condition - stats["ambient_temperature"]["mean"]) / stats[
         "ambient_temperature"
     ]["standard_deviation"]
+    soh_std = (soh_condition - stats["soh"]["mean"]) / stats["soh"][
+        "standard_deviation"
+    ]
+    conditions_std = np.array([[soh_std, amb_std]], dtype=np.float32)
 
-    soh_std = (soh - stats["soh"]["mean"]) / stats["soh"]["standard_deviation"]
+    notes = []
+    if args.soh is not None:
+        notes.append(f"SoH {soh:.4f} -> {args.soh:.4f}")
+    if args.ambient_temperature is not None:
+        notes.append(
+            f"amb {ambient_temperature:.2f}°C -> {args.ambient_temperature:.2f}°C"
+        )
+    if notes:
+        print(f"Condition overrides: {' | '.join(notes)}")
+    print(
+        f"Effective inference conditions: SoH={soh_condition:.4f}, amb={ambient_condition:.2f}°C"
+    )
 
-    y_prediction_std = run_inference(model, y_true_std, device)
+    # Run inference using the current and conditioning vectors
+    y_prediction_std = run_inference(model, current_std, conditions_std, device)
 
     stem = hdf_path.stem[:40]
-    _plot(y_true_std, y_prediction_std, stats, ambient_temperature, stem)
+    _plot(
+        y_true_std,
+        y_prediction_std,
+        stats,
+        ambient_temperature,
+        stem,
+        soh_condition=soh_condition,
+        ambient_condition=ambient_condition,
+    )
 
 
 if __name__ == "__main__":

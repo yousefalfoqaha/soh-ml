@@ -9,22 +9,21 @@ from voltgan.config import (
     AUTOENCODER_EPOCHS,
     BATCH_SIZE,
     CONV_BASE_CHANNELS,
-    CONV_CHANNEL_MULTS,
     CONV_KERNEL_SIZE,
     GENERATOR_CHECKPOINT_PATH,
     GENERATOR_STATS_PATH,
     HDF_ROOT,
     LATENT_DIM,
-    LATENT_LENGTH,
     LEARNING_RATE,
     LEAVE_OUT_TEMPERATURE_RANGE,
+    N_CONDITIONS_GENERATOR,
     PADDED_LENGTH,
     RANDOM_SEED,
     TRAINING_MCUS,
     VALIDATION_MCUS,
 )
 from voltgan.data import DischargeDataset, Standardizer
-from voltgan.models import BatterySequenceGenerator
+from voltgan.models import BatteryConvGenerator
 from voltgan.utils.discover import filter_by_temperature, load_instances
 
 _interrupted = False
@@ -117,13 +116,13 @@ def main():
         collate_fn=collate_fn,
     )
 
-    model = BatterySequenceGenerator(
-        padded_length=PADDED_LENGTH,
-        latent_length=LATENT_LENGTH,
-        latent_dim=LATENT_DIM,
-        conv_base_channels=CONV_BASE_CHANNELS,
-        conv_channel_mults=CONV_CHANNEL_MULTS,
-        conv_kernel_size=CONV_KERNEL_SIZE,
+    model = BatteryConvGenerator(
+        input_features=1,
+        output_feature=2,
+        n_conditions=N_CONDITIONS_GENERATOR,
+        base_channels=CONV_BASE_CHANNELS,
+        latent_size=LATENT_DIM,
+        kernel_size=CONV_KERNEL_SIZE,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
@@ -138,7 +137,9 @@ def main():
         f"\nTrain batches: {len(training_loader)} | "
         f"Validation batches: {len(validation_loader)}"
     )
-    print(f"Training Conv Autoencoder for {AUTOENCODER_EPOCHS} epochs...")
+    print(
+        f"Training Direct Sequence Regression Model for {AUTOENCODER_EPOCHS} epochs (MSE loss)..."
+    )
 
     for epoch in range(AUTOENCODER_EPOCHS):
         model.train()
@@ -147,13 +148,16 @@ def main():
         total_t_loss = 0.0
         n_batches = 0
 
-        for _, _, y, mask in training_loader:
+        for X, conditions, y, mask in training_loader:
+            X = X.to(device, non_blocking=True)
+            conditions = conditions.to(device, non_blocking=True)
             y = y.to(device, non_blocking=True)
             mask = mask.to(device, non_blocking=True)
 
             optimizer.zero_grad(set_to_none=True)
 
-            y_pred = model(y)
+            y_pred = model(X, conditions)
+
             diff = (y_pred - y) ** 2
             loss = (diff * mask).sum() / (mask.sum() + 1e-8)
 
@@ -177,14 +181,17 @@ def main():
         val_batches = 0
 
         with torch.no_grad():
-            for _, _, y, mask in validation_loader:
+            for X, conditions, y, mask in validation_loader:
+                X = X.to(device, non_blocking=True)
+                conditions = conditions.to(device, non_blocking=True)
                 y = y.to(device, non_blocking=True)
                 mask = mask.to(device, non_blocking=True)
 
-                y_pred = model(y)
+                y_pred = model(X, conditions)
                 diff = (y_pred - y) ** 2
-                v_loss = (diff * mask).sum() / (mask.sum() + 1e-8)
-                val_loss += v_loss.item()
+                val_mse = (diff * mask).sum() / (mask.sum() + 1e-8)
+
+                val_loss += val_mse.item()
                 val_batches += 1
 
         mean_train = total_loss / max(1, n_batches)
@@ -194,8 +201,8 @@ def main():
 
         print(
             f"Epoch {epoch + 1:02d}/{AUTOENCODER_EPOCHS} | "
-            f"Train: {mean_train:.5f} (V={mean_train_v:.5f} T={mean_train_t:.5f}) | "
-            f"Valid: {mean_val:.5f}"
+            f"Train Loss: {mean_train:.5f} (V_MSE={mean_train_v:.5f}, T_MSE={mean_train_t:.5f}) | "
+            f"Valid Loss: {mean_val:.5f}"
         )
 
         if _interrupted:
@@ -207,4 +214,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

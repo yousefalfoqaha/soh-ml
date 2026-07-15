@@ -1,5 +1,4 @@
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 
@@ -83,11 +82,32 @@ class ConvEncoder(nn.Module):
                 ConvBlock(channels[i], channels[i + 1], kernel_size, stride=2)
             )
 
-        blocks.append(nn.Conv1d(channels[-1], latent_dim, kernel_size=1))
+        blocks.append(nn.Conv1d(channels[-1], 2 * latent_dim, kernel_size=1))
         self.net = nn.Sequential(*blocks)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x)
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        h = self.net(x)
+        mu, logvar = h.chunk(2, dim=1)
+        logvar = logvar.clamp(-8.0, 8.0)
+
+        return mu, logvar
+
+
+class _FiLM(nn.Module):
+    def __init__(self, n_conditions: int, embed_dim: int):
+        super().__init__()
+        self.cond_scale = nn.Linear(n_conditions, embed_dim)
+        self.cond_shift = nn.Linear(n_conditions, embed_dim)
+        nn.init.zeros_(self.cond_scale.weight)
+        nn.init.zeros_(self.cond_scale.bias)
+        nn.init.zeros_(self.cond_shift.weight)
+        nn.init.zeros_(self.cond_shift.bias)
+
+    def forward(self, x: torch.Tensor, conditions: torch.Tensor) -> torch.Tensor:
+        scale = self.cond_scale(conditions).unsqueeze(-1)
+        shift = self.cond_shift(conditions).unsqueeze(-1)
+
+        return x * (1.0 + scale) + shift
 
 
 class ConvDecoder(nn.Module):
@@ -97,6 +117,7 @@ class ConvDecoder(nn.Module):
         out_channels: int,
         base_channels: int,
         channel_mults: list[int],
+        n_conditions: int,
         kernel_size: int = 7,
     ):
         super().__init__()
@@ -116,14 +137,22 @@ class ConvDecoder(nn.Module):
             )
 
         self.net = nn.Sequential(*blocks)
+        self.film = _FiLM(n_conditions=n_conditions, embed_dim=out_channels)
 
-    def forward(self, z: torch.Tensor) -> torch.Tensor:
-        return self.net(z)
+    def forward(
+        self,
+        z: torch.Tensor,
+        conditions: torch.Tensor,
+    ) -> torch.Tensor:
+        out = self.net(z)
+
+        return self.film(out, conditions)
 
 
 class BatterySequenceGenerator(nn.Module):
     def __init__(
         self,
+        n_conditions: int,
         padded_length: int,
         latent_length: int,
         latent_dim: int,
@@ -135,9 +164,10 @@ class BatterySequenceGenerator(nn.Module):
         self.padded_length = padded_length
         self.latent_length = latent_length
         self.latent_dim = latent_dim
+        self.n_conditions = n_conditions
 
         self.encoder = ConvEncoder(
-            in_channels=2,
+            in_channels=3,
             latent_dim=latent_dim,
             base_channels=conv_base_channels,
             channel_mults=conv_channel_mults,
@@ -149,29 +179,41 @@ class BatterySequenceGenerator(nn.Module):
             out_channels=2,
             base_channels=conv_base_channels,
             channel_mults=conv_channel_mults,
+            n_conditions=n_conditions,
             kernel_size=conv_kernel_size,
         )
 
-    def _pad(self, x: torch.Tensor) -> torch.Tensor:
-        if x.size(1) >= self.padded_length:
-            return x[:, : self.padded_length, :]
+    def encode(self, y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        mu, logvar = self.encoder(y.permute(0, 2, 1))
 
-        pad_len = self.padded_length - x.size(1)
+        return mu.permute(0, 2, 1), logvar.permute(0, 2, 1)
 
-        return F.pad(x, (0, 0, 0, pad_len))
-
-    def encode(self, y: torch.Tensor) -> torch.Tensor:
-        y_padded = self._pad(y)
-
-        return self.encoder(y_padded.permute(0, 2, 1)).permute(0, 2, 1)
-
-    def decode(self, z: torch.Tensor) -> torch.Tensor:
-        out = self.decoder(z.permute(0, 2, 1)).permute(0, 2, 1)
+    def decode(
+        self,
+        z: torch.Tensor,
+        conditions: torch.Tensor,
+    ) -> torch.Tensor:
+        out = self.decoder(z.permute(0, 2, 1), conditions)
+        out = out.permute(0, 2, 1)
 
         return out[:, : self.padded_length, :]
 
-    def forward(self, y: torch.Tensor) -> torch.Tensor:
-        z = self.encode(y)
+    def reparameterize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
+        if self.training:
+            codings_std = torch.exp(0.5 * logvar)
+            noise = torch.randn_like(codings_std)
 
-        return self.decode(z)
+            return mu + noise * codings_std
 
+        return mu
+
+    def forward(
+        self,
+        y: torch.Tensor,
+        conditions: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        mu, logvar = self.encode(y)
+        z = self.reparameterize(mu, logvar)
+        y_hat = self.decode(z, conditions)
+
+        return y_hat, mu, logvar
