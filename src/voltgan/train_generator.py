@@ -23,7 +23,7 @@ from voltgan.config import (
     VALIDATION_MCUS,
 )
 from voltgan.data import DischargeDataset, Standardizer
-from voltgan.models import BatteryConvGenerator
+from voltgan.models import BatterySequenceGenerator
 from voltgan.utils.discover import filter_by_temperature, load_instances
 
 _interrupted = False
@@ -116,9 +116,8 @@ def main():
         collate_fn=collate_fn,
     )
 
-    model = BatteryConvGenerator(
+    model = BatterySequenceGenerator(
         input_features=1,
-        output_feature=2,
         n_conditions=N_CONDITIONS_GENERATOR,
         base_channels=CONV_BASE_CHANNELS,
         latent_size=LATENT_DIM,

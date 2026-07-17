@@ -1,3 +1,2 @@
 from voltgan.models.battery_sequence_generator import BatterySequenceGenerator
-from voltgan.models.conv import BatteryConvGenerator
 from voltgan.models.soh_estimator import SohEstimator

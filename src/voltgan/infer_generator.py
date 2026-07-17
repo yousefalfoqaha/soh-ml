@@ -18,7 +18,7 @@ from voltgan.config import (
     PADDED_LENGTH,
     PLOTS_PATH,
 )
-from voltgan.models import BatteryConvGenerator
+from voltgan.models import BatterySequenceGenerator
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -64,10 +64,8 @@ def _destandardize(arr: np.ndarray, s: dict) -> np.ndarray:
 
 
 def _load_model(device: str) -> torch.nn.Module:
-    # Updated to BatteryConvGenerator with correct feature dimensions
-    model = BatteryConvGenerator(
-        input_features=1,  # Generator takes Current (I)
-        output_feature=2,  # Generator predicts Voltage (U) and Temp delta (temp_delta)
+    model = BatterySequenceGenerator(
+        input_features=1,
         n_conditions=N_CONDITIONS_GENERATOR,
         base_channels=CONV_BASE_CHANNELS,
         latent_size=LATENT_DIM,
@@ -95,7 +93,6 @@ def run_inference(
 ) -> np.ndarray:
     orig_length = current_std.shape[0]
 
-    # Model input is current shape: [1, sequence_length, 1]
     X_tensor = (
         torch.tensor(current_std, dtype=torch.float32)
         .unsqueeze(-1)
@@ -104,15 +101,12 @@ def run_inference(
     )
     conditions_tensor = torch.tensor(conditions_std, dtype=torch.float32).to(device)
 
-    # Pad the sequence to PADDED_LENGTH to prevent downsampling alignment issues
     if orig_length < PADDED_LENGTH:
         pad_len = PADDED_LENGTH - orig_length
         X_tensor = F.pad(X_tensor, (0, 0, 0, pad_len))
 
-    # Updated API: model returns a single output tensor
     y_hat = model(X_tensor, conditions_tensor)
 
-    # Squeeze the batch dimension and slice back to the original unpadded sequence length
     return y_hat.squeeze(0).cpu().numpy()[:orig_length]
 
 
@@ -184,7 +178,7 @@ def _plot(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run BatteryConvGenerator inference on a single HDF file."
+        description="Run BatterySequenceGenerator inference on a single HDF file."
     )
     parser.add_argument(
         "--hdf",
@@ -244,18 +238,15 @@ def main() -> None:
         stats = json.load(f)
     print(f"Stats loaded from {GENERATOR_STATS_PATH}")
 
-    # Standardize data
     current_std = _standardize(current, stats["I"])
     voltage_std = _standardize(voltage, stats["U"])
     thermal_rise = temperature - ambient_temperature
     temp_delta_std = _standardize(thermal_rise, stats["temp_delta"])
 
-    # True targets for plot comparison
     y_true_std = np.stack([voltage_std, temp_delta_std], axis=1).astype(np.float32)
 
     model = _load_model(device)
 
-    # Resolve conditioning parameters
     soh_condition = args.soh if args.soh is not None else soh
     ambient_condition = (
         args.ambient_temperature
@@ -284,7 +275,6 @@ def main() -> None:
         f"Effective inference conditions: SoH={soh_condition:.4f}, amb={ambient_condition:.2f}°C"
     )
 
-    # Run inference using the current and conditioning vectors
     y_prediction_std = run_inference(model, current_std, conditions_std, device)
 
     stem = hdf_path.stem[:40]
