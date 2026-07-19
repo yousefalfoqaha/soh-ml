@@ -2,28 +2,32 @@ import signal
 
 import torch
 import torch.nn.functional as F
+from torch import nn
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader
 
 from voltgan.config import (
-    AUTOENCODER_EPOCHS,
     BATCH_SIZE,
     CONV_BASE_CHANNELS,
+    CONV_HIDDEN_LAYERS,
     CONV_KERNEL_SIZE,
+    CRITIC_CHECKPOINT_PATH,
+    CRITIC_ITERATIONS,
     GENERATOR_CHECKPOINT_PATH,
     GENERATOR_STATS_PATH,
     HDF_ROOT,
-    LATENT_DIM,
+    LEAKY_SLOPE,
     LEARNING_RATE,
     LEAVE_OUT_TEMPERATURE_RANGE,
-    N_CONDITIONS_GENERATOR,
-    PADDED_LENGTH,
+    N_CONDITIONS_GAN,
+    N_EPOCHS_GAN,
+    NOISE_DIM,
     RANDOM_SEED,
     TRAINING_MCUS,
     VALIDATION_MCUS,
 )
-from voltgan.data import DischargeDataset, Standardizer
-from voltgan.models import BatterySequenceGenerator
+from voltgan.data import BucketSampler, DischargeDataset, Standardizer
+from voltgan.models import Critic, Generator
 from voltgan.utils.discover import filter_by_temperature, load_instances
 
 _interrupted = False
@@ -50,23 +54,21 @@ def collate_fn(batch):
         conditions_list.append(item[1])
         y_list.append(item[2])
 
-    lengths = torch.tensor([len(x) for x in X_list], dtype=torch.int64)
-
     X_padded = pad_sequence(X_list, batch_first=True, padding_value=0.0)
     y_padded = pad_sequence(y_list, batch_first=True, padding_value=0.0)
 
-    if X_padded.size(1) < PADDED_LENGTH:
-        pad_len = PADDED_LENGTH - X_padded.size(1)
-        X_padded = F.pad(X_padded, (0, 0, 0, pad_len))
-        y_padded = F.pad(y_padded, (0, 0, 0, pad_len))
+    max_len = X_padded.size(1)
+    downsample_factor = 2**CONV_HIDDEN_LAYERS
+    remainder = max_len % downsample_factor
+
+    if remainder != 0:
+        pad_len = downsample_factor - remainder
+        X_padded = F.pad(X_padded, (0, 0, 0, pad_len), value=0.0)
+        y_padded = F.pad(y_padded, (0, 0, 0, pad_len), value=0.0)
 
     conditions_stacked = torch.stack(conditions_list, dim=0)
 
-    indices = torch.arange(PADDED_LENGTH).expand(len(lengths), PADDED_LENGTH)
-    mask = indices < lengths.unsqueeze(1)
-    mask = mask.unsqueeze(-1)
-
-    return X_padded, conditions_stacked, y_padded, mask
+    return X_padded, conditions_stacked, y_padded
 
 
 def main():
@@ -95,120 +97,202 @@ def main():
     training_dataset = DischargeDataset(instances=train_instances, stats=stats)
     validation_dataset = DischargeDataset(instances=val_instances, stats=stats)
 
+    batch_sampler = BucketSampler(
+        dataset=training_dataset,
+        max_batch_size=BATCH_SIZE,
+        max_padding_threshold=150,
+        noise_scale=50,
+        min_length=1000,
+    )
+
     training_loader = DataLoader(
         training_dataset,
-        batch_size=BATCH_SIZE,
-        shuffle=True,
         num_workers=4,
         pin_memory=True,
         persistent_workers=True,
         worker_init_fn=_worker_init,
         collate_fn=collate_fn,
+        batch_sampler=batch_sampler,
     )
     validation_loader = DataLoader(
         validation_dataset,
-        batch_size=BATCH_SIZE,
-        shuffle=False,
         num_workers=4,
         pin_memory=True,
         persistent_workers=True,
         worker_init_fn=_worker_init,
         collate_fn=collate_fn,
+        batch_sampler=batch_sampler,
     )
 
-    model = BatterySequenceGenerator(
+    generator = Generator(
         input_features=1,
-        n_conditions=N_CONDITIONS_GENERATOR,
+        n_conditions=N_CONDITIONS_GAN,
         base_channels=CONV_BASE_CHANNELS,
-        latent_size=LATENT_DIM,
+        kernel_size=CONV_KERNEL_SIZE,
+        noise_dim=100,
+    ).to(device)
+
+    critic = Critic(
+        input_features=2,
+        n_conditions=N_CONDITIONS_GAN,
+        base_channels=CONV_BASE_CHANNELS,
         kernel_size=CONV_KERNEL_SIZE,
     ).to(device)
 
-    n_params = sum(p.numel() for p in model.parameters())
-    print(f"Model parameters: {n_params:,}")
+    initialize_weights(generator)
+    initialize_weights(critic)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=AUTOENCODER_EPOCHS, eta_min=5e-5
+    generator_optim = torch.optim.Adam(
+        generator.parameters(), lr=LEARNING_RATE, betas=(0.0, 0.9)
+    )
+    critic_optim = torch.optim.Adam(
+        critic.parameters(), lr=LEARNING_RATE, betas=(0.0, 0.9)
+    )
+
+    generator_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        generator_optim, T_max=N_EPOCHS_GAN, eta_min=5e-5
+    )
+    critic_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        critic_optim, T_max=N_EPOCHS_GAN, eta_min=5e-5
     )
 
     print(
         f"\nTrain batches: {len(training_loader)} | "
         f"Validation batches: {len(validation_loader)}"
     )
-    print(
-        f"Training Direct Sequence Regression Model for {AUTOENCODER_EPOCHS} epochs (MSE loss)..."
-    )
+    print(f"Training for {N_EPOCHS_GAN} epochs...")
 
-    for epoch in range(AUTOENCODER_EPOCHS):
-        model.train()
-        total_loss = 0.0
-        total_v_loss = 0.0
-        total_t_loss = 0.0
+    for epoch in range(N_EPOCHS_GAN):
+        generator.train()
+        critic.train()
+
+        total_train_loss_critic = 0.0
+        total_train_loss_gp = 0.0
+        total_train_loss_generator = 0.0
         n_batches = 0
 
-        for X, conditions, y, mask in training_loader:
+        for _, (X, conditions, real) in enumerate(training_loader):
             X = X.to(device, non_blocking=True)
             conditions = conditions.to(device, non_blocking=True)
-            y = y.to(device, non_blocking=True)
-            mask = mask.to(device, non_blocking=True)
+            real = real.to(device, non_blocking=True)
 
-            optimizer.zero_grad(set_to_none=True)
+            # is_zero = (real == 0.0).all(dim=-1)
+            # zeros_per_element = is_zero.sum(dim=-1)
 
-            y_pred = model(X, conditions)
+            # print(f"\n--- Batch Padding Profile (Total Timesteps: {real.size(1)}) ---")
+            # for idx, num_zeros in enumerate(zeros_per_element.tolist()):
+            #     actual_length = real.size(1) - num_zeros
+            #     print(
+            #         f" Element {idx:03d} | Zeros (Pad): {num_zeros:5d} | Active Steps: {actual_length:5d}"
+            #     )
+            # print("-------------------------------------------------------\n")
 
-            diff = (y_pred - y) ** 2
-            loss = (diff * mask).sum() / (mask.sum() + 1e-8)
+            critic_losses = []
+            gp_losses = []
 
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
+            for _ in range(CRITIC_ITERATIONS):
+                noise = torch.randn(X.size(0), NOISE_DIM).to(device)
+                fake = generator(X, conditions, noise)
+                fake = fake.detach()
+                critic_real = critic(real, conditions).reshape(-1)
+                critic_fake = critic(fake, conditions).reshape(-1)
+                gp = 10 * gradient_penalty(real, fake, critic, conditions, device)
 
-            total_loss += loss.item()
-            total_v_loss += (diff[:, :, 0:1] * mask).sum().item() / (
-                mask.sum().item() + 1e-8
-            )
-            total_t_loss += (diff[:, :, 1:2] * mask).sum().item() / (
-                mask.sum().item() + 1e-8
-            )
+                loss_critic = -(torch.mean(critic_real) - torch.mean(critic_fake)) + gp
+                critic.zero_grad()
+                loss_critic.backward()
+                critic_optim.step()
+
+                critic_losses.append(loss_critic.item())
+                gp_losses.append(gp)
+
+            total_train_loss_critic += sum(critic_losses) / len(critic_losses)
+            total_train_loss_gp += sum(gp_losses) / len(gp_losses)
+
+            noise = torch.randn(X.size(0), NOISE_DIM).to(device)
+            fake = generator(X, conditions, noise)
+            output = critic(fake, conditions).reshape(-1)
+
+            loss_generator = -torch.mean(output)
+
+            generator.zero_grad()
+            loss_generator.backward()
+            generator_optim.step()
+
+            total_train_loss_generator += loss_generator.item()
             n_batches += 1
 
-        scheduler.step()
+        generator_scheduler.step()
+        critic_scheduler.step()
 
-        model.eval()
-        val_loss = 0.0
-        val_batches = 0
+        # generator.eval()
+        # critic.eval()
+        # total_validation_loss_critic = 0.0
+        # total_validation_loss_generator = 0.0
+        # val_batches = 0
 
-        with torch.no_grad():
-            for X, conditions, y, mask in validation_loader:
-                X = X.to(device, non_blocking=True)
-                conditions = conditions.to(device, non_blocking=True)
-                y = y.to(device, non_blocking=True)
-                mask = mask.to(device, non_blocking=True)
+        # with torch.no_grad():
+        #     for X, conditions, y in validation_loader:
+        #         X = X.to(device, non_blocking=True)
+        #         conditions = conditions.to(device, non_blocking=True)
+        #         y = y.to(device, non_blocking=True)
+        #
+        #         # WIP
+        #
+        #         val_batches += 1
 
-                y_pred = model(X, conditions)
-                diff = (y_pred - y) ** 2
-                val_mse = (diff * mask).sum() / (mask.sum() + 1e-8)
+        mean_loss_train_critic = total_train_loss_critic / max(1, n_batches)
+        mean_loss_train_gp = total_train_loss_gp / max(1, n_batches)
+        mean_loss_train_generator = total_train_loss_generator / max(1, n_batches)
 
-                val_loss += val_mse.item()
-                val_batches += 1
-
-        mean_train = total_loss / max(1, n_batches)
-        mean_train_v = total_v_loss / max(1, n_batches)
-        mean_train_t = total_t_loss / max(1, n_batches)
-        mean_val = val_loss / max(1, val_batches)
+        # mean_loss_validation_critic = total_validation_loss_critic / max(1, val_batches)
+        # mean_loss_validation_generator = total_validation_loss_generator / max(
+        #     1, val_batches
+        # )
 
         print(
-            f"Epoch {epoch + 1:02d}/{AUTOENCODER_EPOCHS} | "
-            f"Train Loss: {mean_train:.5f} (V_MSE={mean_train_v:.5f}, T_MSE={mean_train_t:.5f}) | "
-            f"Valid Loss: {mean_val:.5f}"
+            f"Epoch {epoch + 1:02d}/{N_EPOCHS_GAN} | "
+            f"Critic Loss: {mean_loss_train_critic:.5f} | "
+            f"GP: {mean_loss_train_gp:.5f} | "
+            f"Generator Loss: {mean_loss_train_generator:.5f} | "
+            # f"Valid Critic Loss: {mean_loss_validation_critic:.5f}"
+            # f"Valid Generator Loss: {mean_loss_validation_generator:.5f}"
         )
 
         if _interrupted:
             break
 
-    torch.save(model.state_dict(), GENERATOR_CHECKPOINT_PATH)
+    torch.save(generator.state_dict(), GENERATOR_CHECKPOINT_PATH)
+    torch.save(critic.state_dict(), CRITIC_CHECKPOINT_PATH)
     print(f"Model saved -> {GENERATOR_CHECKPOINT_PATH}")
+
+
+def gradient_penalty(real, fake, critic, conditions, device="cpu"):
+    epsilon = torch.rand(real.shape[0], 1, 1, device=device)
+    interpolated_instances = epsilon * real + (1 - epsilon) * fake
+    interpolated_instances = interpolated_instances.requires_grad_(True)
+
+    mixed_scores = critic(interpolated_instances, conditions)
+
+    gradient = torch.autograd.grad(
+        inputs=interpolated_instances,
+        outputs=mixed_scores,
+        grad_outputs=torch.ones_like(mixed_scores),
+        create_graph=True,
+        retain_graph=True,
+    )[0]
+
+    gradient = gradient.reshape(gradient.shape[0], -1)
+    gradient_norm = gradient.norm(2, dim=1)
+    gradient_penality = torch.mean((gradient_norm - 1) ** 2)
+
+    return gradient_penality
+
+
+def initialize_weights(model):
+    for m in model.modules():
+        if isinstance(m, (nn.Conv1d, nn.ConvTranspose1d, nn.BatchNorm1d)):
+            nn.init.normal_(m.weight.data, 0.0, 0.02)
 
 
 if __name__ == "__main__":

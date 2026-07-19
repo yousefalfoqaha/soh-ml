@@ -46,27 +46,24 @@ class Critic(nn.Module):
             nn.Conv1d(
                 in_channels, out_channels, kernel_size, stride, padding, bias=False
             ),
-            nn.InstanceNorm1d(out_channels),
+            nn.InstanceNorm1d(out_channels, affine=True),
             nn.LeakyReLU(LEAKY_SLOPE),
         )
 
     def forward(
         self,
-        X: torch.Tensor,
         y: torch.Tensor,
         conditions: torch.Tensor,
     ):
-        x = X.permute(0, 2, 1)
-        y_t = y.permute(0, 2, 1)
-        z = torch.cat([x, y_t], dim=1)
-
-        z_encoded = self.input_feature_encoder(z)
+        y = y.permute(0, 2, 1)
+        y_encoded = self.input_feature_encoder(y)
 
         conditions_encoded = self.condition_encoder(conditions)
 
         conditions_encoded = conditions_encoded.unsqueeze(-1).expand(
-            -1, -1, z_encoded.shape[2]
+            -1, -1, y_encoded.shape[2]
         )
-        encoder_input = torch.cat([z_encoded, conditions_encoded], dim=1)
+        encoder_input = torch.cat([y_encoded, conditions_encoded], dim=1)
+        output = self.critic(encoder_input)
 
-        return self.critic(encoder_input)
+        return torch.mean(output, dim=2).squeeze(1)

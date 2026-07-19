@@ -14,7 +14,7 @@ from voltgan.config import (
     GENERATOR_STATS_PATH,
     HDF_ROOT,
     LATENT_DIM,
-    N_CONDITIONS_GENERATOR,
+    N_CONDITIONS_GAN,
     PADDED_LENGTH,
     PLOTS_PATH,
 )
@@ -66,7 +66,7 @@ def _destandardize(arr: np.ndarray, s: dict) -> np.ndarray:
 def _load_model(device: str) -> torch.nn.Module:
     model = BatterySequenceGenerator(
         input_features=1,
-        n_conditions=N_CONDITIONS_GENERATOR,
+        n_conditions=N_CONDITIONS_GAN,
         base_channels=CONV_BASE_CHANNELS,
         latent_size=LATENT_DIM,
         kernel_size=CONV_KERNEL_SIZE,

@@ -22,7 +22,7 @@ from voltgan.config import (
     HDF_ROOT,
     LATENT_DIM,
     LATENT_LENGTH,
-    N_CONDITIONS_GENERATOR,
+    N_CONDITIONS_GAN,
     PADDED_LENGTH,
     PLOTS_PATH,
 )
@@ -40,7 +40,7 @@ def _load_model(device: str) -> torch.nn.Module:
         raise ValueError("No generator checkpoint found.")
 
     model = BatterySequenceGenerator(
-        n_conditions=N_CONDITIONS_GENERATOR,
+        n_conditions=N_CONDITIONS_GAN,
         padded_length=PADDED_LENGTH,
         latent_length=LATENT_LENGTH,
         latent_dim=LATENT_DIM,
@@ -90,13 +90,11 @@ def _run_inference(
     conditions_std: np.ndarray,
     device: str,
 ) -> tuple[np.ndarray, np.ndarray]:
-    y_vt_i = np.stack(
-        [voltage_std, temp_delta_std, current_std], axis=1
-    ).astype(np.float32)
-    y_tensor = torch.tensor(y_vt_i, dtype=torch.float32).unsqueeze(0).to(device)
-    conditions_tensor = (
-        torch.tensor(conditions_std, dtype=torch.float32).to(device)
+    y_vt_i = np.stack([voltage_std, temp_delta_std, current_std], axis=1).astype(
+        np.float32
     )
+    y_tensor = torch.tensor(y_vt_i, dtype=torch.float32).unsqueeze(0).to(device)
+    conditions_tensor = torch.tensor(conditions_std, dtype=torch.float32).to(device)
 
     y_hat, _, _ = model(y_tensor, conditions_tensor)
     n = y_vt_i.shape[0]
@@ -396,4 +394,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -46,32 +46,28 @@ class Generator(nn.Module):
 
         self.voltage_decoder = nn.Sequential(
             self._decoder_block(
-                base_channels * 12, base_channels * 6, kernel_size, 2, padding
+                base_channels * 12, base_channels * 6, kernel_size, 2, padding, 1
             ),
             self._decoder_block(
-                base_channels * 6, base_channels * 3, kernel_size, 2, padding
-            ),
-            self._decoder_block(
-                base_channels * 3, base_channels, kernel_size, 2, padding
+                base_channels * 6, base_channels * 3, kernel_size, 2, padding, 1
             ),
             nn.ConvTranspose1d(
-                base_channels, 1, kernel_size, 2, padding, output_padding=1
+                base_channels * 3, 1, kernel_size, 2, padding, output_padding=1
             ),
+            nn.Tanh(),
         )
 
         self.temperature_decoder = nn.Sequential(
             self._decoder_block(
-                base_channels * 12, base_channels * 6, kernel_size, 2, padding
+                base_channels * 12, base_channels * 6, kernel_size, 2, padding, 1
             ),
             self._decoder_block(
-                base_channels * 6, base_channels * 3, kernel_size, 2, padding
-            ),
-            self._decoder_block(
-                base_channels * 3, base_channels, kernel_size, 2, padding
+                base_channels * 6, base_channels * 3, kernel_size, 2, padding, 1
             ),
             nn.ConvTranspose1d(
-                base_channels, 1, kernel_size, 2, padding, output_padding=1
+                base_channels * 3, 1, kernel_size, 2, padding, output_padding=1
             ),
+            nn.Tanh(),
         )
 
     def _encoder_block(self, in_channels, out_channels, kernel_size, stride, padding):
@@ -79,16 +75,24 @@ class Generator(nn.Module):
             nn.Conv1d(
                 in_channels, out_channels, kernel_size, stride, padding, bias=False
             ),
-            nn.InstanceNorm1d(out_channels),
+            nn.InstanceNorm1d(out_channels, affine=True),
             nn.LeakyReLU(LEAKY_SLOPE),
         )
 
-    def _decoder_block(self, in_channels, out_channels, kernel_size, stride, padding):
+    def _decoder_block(
+        self, in_channels, out_channels, kernel_size, stride, padding, output_padding
+    ):
         return nn.Sequential(
             nn.ConvTranspose1d(
-                in_channels, out_channels, kernel_size, stride, padding, bias=False
+                in_channels,
+                out_channels,
+                kernel_size,
+                stride,
+                padding,
+                output_padding,
+                bias=False,
             ),
-            nn.InstanceNorm1d(out_channels),
+            nn.InstanceNorm1d(out_channels, affine=True),
             nn.ReLU(),
         )
 
@@ -105,9 +109,13 @@ class Generator(nn.Module):
         conditions_encoded = self.condition_encoder(conditions)
         noise_encoded = self.noise_encoder(noise)
 
-        x_encoded_sequence_length = x.shape[1]
-        conditions_encoded.unsqueeze(-1).expand(-1, -1, x_encoded_sequence_length)
-        noise_encoded.unsqueeze(-1).expand(-1, -1, x_encoded_sequence_length)
+        x_encoded_sequence_length = x_encoded.shape[2]
+        conditions_encoded = conditions_encoded.unsqueeze(-1).expand(
+            -1, -1, x_encoded_sequence_length
+        )
+        noise_encoded = noise_encoded.unsqueeze(-1).expand(
+            -1, -1, x_encoded_sequence_length
+        )
 
         encoded_inputs = torch.cat(
             [x_encoded, conditions_encoded, noise_encoded], dim=1
@@ -119,4 +127,4 @@ class Generator(nn.Module):
 
         output = torch.cat([voltage_output, temperature_output], dim=1)
 
-        return output.permute(0, 2, 1)[:, :sequence_length, :]
+        return output.permute(0, 2, 1)
