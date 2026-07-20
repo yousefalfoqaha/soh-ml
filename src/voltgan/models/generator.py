@@ -12,6 +12,7 @@ class Generator(nn.Module):
         base_channels: int,
         noise_dim: int,
         latent_size: int,
+        dropout: float,
         kernel_size: int = 7,
     ):
         super().__init__()
@@ -32,13 +33,23 @@ class Generator(nn.Module):
             ),
             nn.LeakyReLU(LEAKY_SLOPE),
             self._encoder_block(
-                base_channels, 2 * base_channels, kernel_size, stride, padding
+                base_channels, 2 * base_channels, kernel_size, stride, padding, dropout
             ),
             self._encoder_block(
-                2 * base_channels, 4 * base_channels, kernel_size, stride, padding
+                2 * base_channels,
+                4 * base_channels,
+                kernel_size,
+                stride,
+                padding,
+                dropout,
             ),
             self._encoder_block(
-                4 * base_channels, 8 * base_channels, kernel_size, stride, padding
+                4 * base_channels,
+                8 * base_channels,
+                kernel_size,
+                stride,
+                padding,
+                dropout,
             ),
         )
 
@@ -48,6 +59,7 @@ class Generator(nn.Module):
             num_layers=2,
             batch_first=True,
             bidirectional=True,
+            dropout=dropout,
         )
 
         self.voltage_decoder = nn.Sequential(
@@ -67,6 +79,7 @@ class Generator(nn.Module):
                 stride,
                 padding,
                 1,
+                dropout,
             ),
             self._decoder_block(
                 4 * base_channels,
@@ -75,6 +88,7 @@ class Generator(nn.Module):
                 stride,
                 padding,
                 1,
+                dropout,
             ),
             self._decoder_block(
                 2 * base_channels,
@@ -83,6 +97,7 @@ class Generator(nn.Module):
                 stride,
                 padding,
                 1,
+                dropout,
             ),
         )
 
@@ -103,6 +118,7 @@ class Generator(nn.Module):
                 stride,
                 padding,
                 1,
+                dropout,
             ),
             self._decoder_block(
                 4 * base_channels,
@@ -111,6 +127,7 @@ class Generator(nn.Module):
                 stride,
                 padding,
                 1,
+                dropout,
             ),
             self._decoder_block(
                 2 * base_channels,
@@ -119,23 +136,34 @@ class Generator(nn.Module):
                 stride,
                 padding,
                 1,
+                dropout,
             ),
         )
 
         self.voltage_output = nn.Conv1d(base_channels, 1, kernel_size=1)
         self.temperature_output = nn.Conv1d(2 * base_channels, 1, kernel_size=1)
 
-    def _encoder_block(self, in_channels, out_channels, kernel_size, stride, padding):
+    def _encoder_block(
+        self, in_channels, out_channels, kernel_size, stride, padding, dropout
+    ):
         return nn.Sequential(
             nn.Conv1d(
                 in_channels, out_channels, kernel_size, stride, padding, bias=False
             ),
             nn.InstanceNorm1d(out_channels, affine=True),
             nn.LeakyReLU(LEAKY_SLOPE),
+            nn.Dropout(dropout),
         )
 
     def _decoder_block(
-        self, in_channels, out_channels, kernel_size, stride, padding, output_padding
+        self,
+        in_channels,
+        out_channels,
+        kernel_size,
+        stride,
+        padding,
+        output_padding,
+        dropout,
     ):
         return nn.Sequential(
             nn.ConvTranspose1d(
@@ -147,8 +175,9 @@ class Generator(nn.Module):
                 output_padding,
                 bias=False,
             ),
-            # nn.InstanceNorm1d(out_channels, affine=True),
-            nn.LeakyReLU(LEAKY_SLOPE),
+            # nn.BatchNorm1d(out_channels, affine=True),
+            nn.ReLU(),
+            nn.Dropout(dropout),
         )
 
     def forward(self, X, conditions, noise):

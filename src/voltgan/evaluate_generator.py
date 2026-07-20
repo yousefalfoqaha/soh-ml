@@ -18,6 +18,7 @@ from voltgan.config import (
     CONV_BASE_CHANNELS,
     CONV_HIDDEN_LAYERS,
     CONV_KERNEL_SIZE,
+    DROPOUT,
     GENERATOR_CHECKPOINT_PATH,
     GENERATOR_STATS_PATH,
     HDF_ROOT,
@@ -46,6 +47,7 @@ def _load_model(device: str) -> torch.nn.Module:
         noise_dim=NOISE_DIM,
         kernel_size=CONV_KERNEL_SIZE,
         latent_size=LATENT_SIZE,
+        dropout=DROPOUT,
     ).to(device)
 
     state_dict = torch.load(GENERATOR_CHECKPOINT_PATH, map_location=device)

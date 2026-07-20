@@ -13,11 +13,11 @@ from voltgan.config import (
     CONV_KERNEL_SIZE,
     CRITIC_CHECKPOINT_PATH,
     CRITIC_ITERATIONS,
+    DROPOUT,
     GENERATOR_CHECKPOINT_PATH,
     GENERATOR_STATS_PATH,
     HDF_ROOT,
     LATENT_SIZE,
-    LEAKY_SLOPE,
     LEARNING_RATE,
     LEAVE_OUT_TEMPERATURE_RANGE,
     N_CONDITIONS_GAN,
@@ -59,7 +59,7 @@ def collate_fn(batch):
     y_padded = pad_sequence(y_list, batch_first=True, padding_value=0.0)
 
     max_len = X_padded.size(1)
-    downsample_factor = 2**CONV_HIDDEN_LAYERS
+    downsample_factor = 5**CONV_HIDDEN_LAYERS
     remainder = max_len % downsample_factor
 
     if remainder != 0:
@@ -139,6 +139,7 @@ def main():
         kernel_size=CONV_KERNEL_SIZE,
         noise_dim=NOISE_DIM,
         latent_size=LATENT_SIZE,
+        dropout=DROPOUT,
     ).to(device)
 
     critic = Critic(
@@ -146,11 +147,8 @@ def main():
         n_conditions=N_CONDITIONS_GAN,
         base_channels=CONV_BASE_CHANNELS,
         kernel_size=CONV_KERNEL_SIZE,
-        latent_size=LATENT_SIZE,
+        dropout=DROPOUT,
     ).to(device)
-
-    initialize_weights(generator)
-    initialize_weights(critic)
 
     generator_optim = torch.optim.Adam(
         generator.parameters(), lr=LEARNING_RATE, betas=(0.0, 0.9)
@@ -285,12 +283,6 @@ def gradient_penalty(real, fake, critic, conditions, device="cpu"):
     gradient_penality = torch.mean((gradient_norm - 1) ** 2)
 
     return gradient_penality
-
-
-def initialize_weights(model):
-    for m in model.modules():
-        if isinstance(m, (nn.Conv1d, nn.ConvTranspose1d, nn.BatchNorm1d)):
-            nn.init.normal_(m.weight.data, 0.0, 0.02)
 
 
 if __name__ == "__main__":

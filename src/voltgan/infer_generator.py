@@ -72,6 +72,7 @@ def _load_model(device: str) -> torch.nn.Module:
         noise_dim=NOISE_DIM,
         kernel_size=CONV_KERNEL_SIZE,
         latent_size=LATENT_SIZE,
+        dropout=0.0,
     ).to(device)
 
     if GENERATOR_CHECKPOINT_PATH.exists():

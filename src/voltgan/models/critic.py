@@ -10,14 +10,14 @@ class Critic(nn.Module):
         input_features: int,
         n_conditions: int,
         base_channels: int,
-        latent_size: int,
+        dropout: float,
         kernel_size: int = 7,
     ):
         super().__init__()
         self.n_conditions = n_conditions
 
-        padding = (kernel_size - 1) // 2
-
+        stride = 5
+        padding = (kernel_size - stride) // 2
         in_channels = input_features + n_conditions
 
         self.critic = nn.Sequential(
@@ -26,31 +26,35 @@ class Critic(nn.Module):
                 base_channels,
                 kernel_size=kernel_size,
                 stride=1,
-                padding=padding,
+                padding=(kernel_size - 1) // 2,
             ),
             nn.LeakyReLU(LEAKY_SLOPE),
-            self._block(base_channels, base_channels * 2, kernel_size, 2, padding),
-            self._block(base_channels * 2, base_channels * 4, kernel_size, 2, padding),
-            self._block(base_channels * 4, base_channels * 8, kernel_size, 2, padding),
+            self._block(
+                base_channels, base_channels * 2, kernel_size, 2, padding, dropout
+            ),
+            self._block(
+                base_channels * 2, base_channels * 4, kernel_size, 2, padding, dropout
+            ),
+            self._block(
+                base_channels * 4, base_channels * 8, kernel_size, 2, padding, dropout
+            ),
+            nn.Conv1d(
+                base_channels * 8,
+                1,
+                kernel_size=kernel_size,
+                stride=1,
+                padding=(kernel_size - 1) // 2,
+            ),
         )
 
-        self.gru = nn.GRU(
-            input_size=8 * base_channels,
-            hidden_size=latent_size,
-            num_layers=2,
-            batch_first=True,
-            bidirectional=True,
-        )
-
-        self.output = nn.Linear(2 * latent_size, 1)
-
-    def _block(self, in_channels, out_channels, kernel_size, stride, padding):
+    def _block(self, in_channels, out_channels, kernel_size, stride, padding, dropout):
         return nn.Sequential(
             nn.Conv1d(
                 in_channels, out_channels, kernel_size, stride, padding, bias=False
             ),
             nn.InstanceNorm1d(out_channels, affine=True),
             nn.LeakyReLU(LEAKY_SLOPE),
+            nn.Dropout(dropout),
         )
 
     def forward(
@@ -64,8 +68,6 @@ class Critic(nn.Module):
 
         x = x.permute(0, 2, 1)
 
-        critic = self.critic(x)
-        _, h_n = self.gru(critic.permute(0, 2, 1))
+        output = self.critic(x)
 
-        pooled = torch.cat([h_n[-2], h_n[-1]], dim=1)
-        return self.output(pooled).squeeze(1)
+        return torch.mean(output, dim=2).squeeze(1)

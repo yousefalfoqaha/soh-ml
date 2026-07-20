@@ -11,6 +11,7 @@ from voltgan.config import (
     CONV_BASE_CHANNELS,
     CONV_HIDDEN_LAYERS,
     CONV_KERNEL_SIZE,
+    DROPOUT,
     GENERATOR_CHECKPOINT_PATH,
     GENERATOR_STATS_PATH,
     HDF_ROOT,
@@ -129,6 +130,7 @@ def main():
         kernel_size=CONV_KERNEL_SIZE,
         noise_dim=NOISE_DIM,
         latent_size=LATENT_SIZE,
+        dropout=DROPOUT,
     ).to(device)
 
     optimizer = torch.optim.Adam(generator.parameters(), lr=LEARNING_RATE)
