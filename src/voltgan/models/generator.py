@@ -11,64 +11,119 @@ class Generator(nn.Module):
         n_conditions: int,
         base_channels: int,
         noise_dim: int,
+        latent_size: int,
         kernel_size: int = 7,
     ):
         super().__init__()
         self.n_conditions = n_conditions
+        self.noise_dim = noise_dim
+        stride = 5
 
-        padding = (kernel_size - 1) // 2
+        padding = (kernel_size - stride) // 2
+        in_channels = input_features + n_conditions + noise_dim
 
-        self.noise_encoder = nn.Sequential(
-            nn.Linear(noise_dim, base_channels), nn.LeakyReLU(LEAKY_SLOPE)
-        )
-        self.condition_encoder = nn.Sequential(
-            nn.Linear(n_conditions, base_channels), nn.LeakyReLU(LEAKY_SLOPE)
-        )
         self.input_feature_encoder = nn.Sequential(
             nn.Conv1d(
-                input_features,
+                in_channels,
                 base_channels,
                 kernel_size=kernel_size,
-                stride=2,
-                padding=padding,
+                stride=1,
+                padding=(kernel_size - 1) // 2,
             ),
             nn.LeakyReLU(LEAKY_SLOPE),
+            self._encoder_block(
+                base_channels, 2 * base_channels, kernel_size, stride, padding
+            ),
+            self._encoder_block(
+                2 * base_channels, 4 * base_channels, kernel_size, stride, padding
+            ),
+            self._encoder_block(
+                4 * base_channels, 8 * base_channels, kernel_size, stride, padding
+            ),
         )
 
-        self.encoder = nn.Sequential(
-            self._encoder_block(
-                base_channels * 3, base_channels * 6, kernel_size, 2, padding
-            ),
-            self._encoder_block(
-                base_channels * 6, base_channels * 12, kernel_size, 2, padding
-            ),
+        self.gru = nn.GRU(
+            input_size=8 * base_channels,
+            hidden_size=latent_size,
+            num_layers=2,
+            batch_first=True,
+            bidirectional=True,
         )
 
         self.voltage_decoder = nn.Sequential(
+            nn.Conv1d(
+                2 * latent_size,
+                8 * base_channels,
+                kernel_size=kernel_size,
+                stride=1,
+                padding=(kernel_size - 1) // 2,
+                bias=False,
+            ),
+            nn.ReLU(),
             self._decoder_block(
-                base_channels * 12, base_channels * 6, kernel_size, 2, padding, 1
+                8 * base_channels,
+                4 * base_channels,
+                kernel_size,
+                stride,
+                padding,
+                1,
             ),
             self._decoder_block(
-                base_channels * 6, base_channels * 3, kernel_size, 2, padding, 1
+                4 * base_channels,
+                2 * base_channels,
+                kernel_size,
+                stride,
+                padding,
+                1,
             ),
-            nn.ConvTranspose1d(
-                base_channels * 3, 1, kernel_size, 2, padding, output_padding=1
+            self._decoder_block(
+                2 * base_channels,
+                base_channels,
+                kernel_size,
+                stride,
+                padding,
+                1,
             ),
-            nn.Tanh(),
         )
 
         self.temperature_decoder = nn.Sequential(
+            nn.Conv1d(
+                (2 * latent_size),
+                8 * base_channels,
+                kernel_size=kernel_size,
+                stride=1,
+                padding=(kernel_size - 1) // 2,
+                bias=False,
+            ),
+            nn.ReLU(),
             self._decoder_block(
-                base_channels * 12, base_channels * 6, kernel_size, 2, padding, 1
+                8 * base_channels,
+                4 * base_channels,
+                kernel_size,
+                stride,
+                padding,
+                1,
             ),
             self._decoder_block(
-                base_channels * 6, base_channels * 3, kernel_size, 2, padding, 1
+                4 * base_channels,
+                2 * base_channels,
+                kernel_size,
+                stride,
+                padding,
+                1,
             ),
-            nn.ConvTranspose1d(
-                base_channels * 3, 1, kernel_size, 2, padding, output_padding=1
+            self._decoder_block(
+                2 * base_channels,
+                base_channels,
+                kernel_size,
+                stride,
+                padding,
+                1,
             ),
-            nn.Tanh(),
         )
+
+        self.voltage_output = nn.Conv1d(base_channels, 1, kernel_size=1)
+        self.temperature_output = nn.Conv1d(2 * base_channels, 1, kernel_size=1)
 
     def _encoder_block(self, in_channels, out_channels, kernel_size, stride, padding):
         return nn.Sequential(
@@ -92,39 +147,32 @@ class Generator(nn.Module):
                 output_padding,
                 bias=False,
             ),
-            nn.InstanceNorm1d(out_channels, affine=True),
-            nn.ReLU(),
+            # nn.InstanceNorm1d(out_channels, affine=True),
+            nn.LeakyReLU(LEAKY_SLOPE),
         )
 
-    # noise: batch x noise_dim
     def forward(self, X, conditions, noise):
+        _, sequence_length, _ = X.shape
 
-        # batch x input_features x sequence_length
         x = X.permute(0, 2, 1)
+        cond_expanded = conditions.unsqueeze(-1).expand(-1, -1, sequence_length)
+        noise_expanded = noise.unsqueeze(-1).expand(-1, -1, sequence_length)
+        x = torch.cat([x, cond_expanded, noise_expanded], dim=1)
 
-        # batch x base_channels x sequence_length / 2
-        x_encoded = self.input_feature_encoder(x)
+        encoder_output = self.input_feature_encoder(x)
 
-        # batch x base_channels
-        conditions_encoded = self.condition_encoder(conditions)
-        noise_encoded = self.noise_encoder(noise)
+        latent_input = encoder_output.permute(0, 2, 1)
+        latent_output, _ = self.gru(latent_input)
 
-        x_encoded_sequence_length = x_encoded.shape[2]
-        conditions_encoded = conditions_encoded.unsqueeze(-1).expand(
-            -1, -1, x_encoded_sequence_length
-        )
-        noise_encoded = noise_encoded.unsqueeze(-1).expand(
-            -1, -1, x_encoded_sequence_length
-        )
+        latent_output = latent_output.permute(0, 2, 1)
 
-        encoded_inputs = torch.cat(
-            [x_encoded, conditions_encoded, noise_encoded], dim=1
-        )
-        encoder_output = self.encoder(encoded_inputs)
+        voltage_features = self.voltage_decoder(latent_output)
+        temperature_features = self.temperature_decoder(latent_output)
 
-        voltage_output = self.voltage_decoder(encoder_output)
-        temperature_output = self.temperature_decoder(encoder_output)
+        combined_features = torch.cat([voltage_features, temperature_features], dim=1)
+        voltage_output = self.voltage_output(voltage_features)
+        temperature_output = self.temperature_output(combined_features)
 
         output = torch.cat([voltage_output, temperature_output], dim=1)
 
-        return output.permute(0, 2, 1)
+        return output.permute(0, 2, 1)[:, :sequence_length, :]

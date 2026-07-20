@@ -6,6 +6,7 @@ def _usage():
     print("Commands:")
     print("  pre               Run preprocessing on dataset")
     print("  train-generator   Run generator model training")
+    print("  train-generator-mse  Run generator model training with MSE loss")
     print("  train-estimator   Run SoH estimator model training")
     print("  infer-generator   Run generator inference on an HDF file")
     print("  infer-estimator   Run SoH estimator inference on an HDF file")
@@ -25,6 +26,10 @@ command = sys.argv.pop(1)
 match command:
     case "train-generator":
         from voltgan.train_generator import main
+
+        main()
+    case "train-generator-mse":
+        from voltgan.train_generator_mse import main
 
         main()
     case "train-estimator":

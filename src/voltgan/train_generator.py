@@ -16,6 +16,7 @@ from voltgan.config import (
     GENERATOR_CHECKPOINT_PATH,
     GENERATOR_STATS_PATH,
     HDF_ROOT,
+    LATENT_SIZE,
     LEAKY_SLOPE,
     LEARNING_RATE,
     LEAVE_OUT_TEMPERATURE_RANGE,
@@ -104,6 +105,13 @@ def main():
         noise_scale=50,
         min_length=1000,
     )
+    validation_sampler = BucketSampler(
+        dataset=validation_dataset,
+        max_batch_size=BATCH_SIZE,
+        max_padding_threshold=150,
+        noise_scale=50,
+        min_length=1000,
+    )
 
     training_loader = DataLoader(
         training_dataset,
@@ -121,7 +129,7 @@ def main():
         persistent_workers=True,
         worker_init_fn=_worker_init,
         collate_fn=collate_fn,
-        batch_sampler=batch_sampler,
+        batch_sampler=validation_sampler,
     )
 
     generator = Generator(
@@ -129,7 +137,8 @@ def main():
         n_conditions=N_CONDITIONS_GAN,
         base_channels=CONV_BASE_CHANNELS,
         kernel_size=CONV_KERNEL_SIZE,
-        noise_dim=100,
+        noise_dim=NOISE_DIM,
+        latent_size=LATENT_SIZE,
     ).to(device)
 
     critic = Critic(
@@ -137,6 +146,7 @@ def main():
         n_conditions=N_CONDITIONS_GAN,
         base_channels=CONV_BASE_CHANNELS,
         kernel_size=CONV_KERNEL_SIZE,
+        latent_size=LATENT_SIZE,
     ).to(device)
 
     initialize_weights(generator)
@@ -175,17 +185,6 @@ def main():
             X = X.to(device, non_blocking=True)
             conditions = conditions.to(device, non_blocking=True)
             real = real.to(device, non_blocking=True)
-
-            # is_zero = (real == 0.0).all(dim=-1)
-            # zeros_per_element = is_zero.sum(dim=-1)
-
-            # print(f"\n--- Batch Padding Profile (Total Timesteps: {real.size(1)}) ---")
-            # for idx, num_zeros in enumerate(zeros_per_element.tolist()):
-            #     actual_length = real.size(1) - num_zeros
-            #     print(
-            #         f" Element {idx:03d} | Zeros (Pad): {num_zeros:5d} | Active Steps: {actual_length:5d}"
-            #     )
-            # print("-------------------------------------------------------\n")
 
             critic_losses = []
             gp_losses = []
@@ -279,7 +278,6 @@ def gradient_penalty(real, fake, critic, conditions, device="cpu"):
         outputs=mixed_scores,
         grad_outputs=torch.ones_like(mixed_scores),
         create_graph=True,
-        retain_graph=True,
     )[0]
 
     gradient = gradient.reshape(gradient.shape[0], -1)

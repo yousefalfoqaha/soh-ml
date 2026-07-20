@@ -11,23 +11,23 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torch.nn.functional as F
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 from voltgan.config import (
     CONV_BASE_CHANNELS,
-    CONV_CHANNEL_MULTS,
+    CONV_HIDDEN_LAYERS,
     CONV_KERNEL_SIZE,
     GENERATOR_CHECKPOINT_PATH,
     GENERATOR_STATS_PATH,
     HDF_ROOT,
-    LATENT_DIM,
-    LATENT_LENGTH,
+    LATENT_SIZE,
     N_CONDITIONS_GAN,
-    PADDED_LENGTH,
+    NOISE_DIM,
     PLOTS_PATH,
 )
 from voltgan.data.instance import DischargeInstance
-from voltgan.models import BatterySequenceGenerator
+from voltgan.models import Generator
 from voltgan.utils.box_table import print_box_table
 from voltgan.utils.discover import discover
 
@@ -39,14 +39,13 @@ def _load_model(device: str) -> torch.nn.Module:
     if not GENERATOR_CHECKPOINT_PATH.exists():
         raise ValueError("No generator checkpoint found.")
 
-    model = BatterySequenceGenerator(
+    model = Generator(
+        input_features=1,
         n_conditions=N_CONDITIONS_GAN,
-        padded_length=PADDED_LENGTH,
-        latent_length=LATENT_LENGTH,
-        latent_dim=LATENT_DIM,
-        conv_base_channels=CONV_BASE_CHANNELS,
-        conv_channel_mults=CONV_CHANNEL_MULTS,
-        conv_kernel_size=CONV_KERNEL_SIZE,
+        base_channels=CONV_BASE_CHANNELS,
+        noise_dim=NOISE_DIM,
+        kernel_size=CONV_KERNEL_SIZE,
+        latent_size=LATENT_SIZE,
     ).to(device)
 
     state_dict = torch.load(GENERATOR_CHECKPOINT_PATH, map_location=device)
@@ -84,20 +83,28 @@ def _soh_band_label(soh: float) -> str:
 @torch.no_grad()
 def _run_inference(
     model: torch.nn.Module,
-    voltage_std: np.ndarray,
-    temp_delta_std: np.ndarray,
     current_std: np.ndarray,
     conditions_std: np.ndarray,
     device: str,
 ) -> tuple[np.ndarray, np.ndarray]:
-    y_vt_i = np.stack([voltage_std, temp_delta_std, current_std], axis=1).astype(
-        np.float32
+    n = current_std.shape[0]
+
+    X_tensor = (
+        torch.tensor(current_std, dtype=torch.float32)
+        .unsqueeze(-1)
+        .unsqueeze(0)
+        .to(device)
     )
-    y_tensor = torch.tensor(y_vt_i, dtype=torch.float32).unsqueeze(0).to(device)
     conditions_tensor = torch.tensor(conditions_std, dtype=torch.float32).to(device)
 
-    y_hat, _, _ = model(y_tensor, conditions_tensor)
-    n = y_vt_i.shape[0]
+    downsample_factor = 5**CONV_HIDDEN_LAYERS
+    remainder = X_tensor.size(1) % downsample_factor
+    if remainder != 0:
+        pad_len = downsample_factor - remainder
+        X_tensor = F.pad(X_tensor, (0, 0, 0, pad_len), value=0.0)
+
+    noise = torch.rand(1, NOISE_DIM, device=device)
+    y_hat = model(X_tensor, conditions_tensor, noise)
     pred = y_hat.squeeze(0).cpu().numpy()[:n]
 
     voltage_pred_std = pred[:, 0]
@@ -127,7 +134,7 @@ def _evaluate_mcu(
         conditions_std = np.array([[soh_std, ambient_std]], dtype=np.float32)
 
         voltage_pred_std, temp_delta_pred_std = _run_inference(
-            model, voltage_std, temp_delta_std, current_std, conditions_std, device
+            model, current_std, conditions_std, device
         )
 
         voltage_true = _destandardize(voltage_std, stats["U"])

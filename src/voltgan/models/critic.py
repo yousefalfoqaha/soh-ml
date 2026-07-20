@@ -10,6 +10,7 @@ class Critic(nn.Module):
         input_features: int,
         n_conditions: int,
         base_channels: int,
+        latent_size: int,
         kernel_size: int = 7,
     ):
         super().__init__()
@@ -17,29 +18,31 @@ class Critic(nn.Module):
 
         padding = (kernel_size - 1) // 2
 
-        self.condition_encoder = nn.Sequential(
-            nn.Linear(n_conditions, base_channels), nn.LeakyReLU(LEAKY_SLOPE)
-        )
+        in_channels = input_features + n_conditions
 
-        self.input_feature_encoder = nn.Sequential(
+        self.critic = nn.Sequential(
             nn.Conv1d(
-                input_features,
+                in_channels,
                 base_channels,
                 kernel_size=kernel_size,
-                stride=2,
+                stride=1,
                 padding=padding,
             ),
             nn.LeakyReLU(LEAKY_SLOPE),
-        )
-
-        self.critic = nn.Sequential(
+            self._block(base_channels, base_channels * 2, kernel_size, 2, padding),
             self._block(base_channels * 2, base_channels * 4, kernel_size, 2, padding),
             self._block(base_channels * 4, base_channels * 8, kernel_size, 2, padding),
-            self._block(base_channels * 8, base_channels * 16, kernel_size, 2, padding),
-            nn.Conv1d(
-                base_channels * 16, 1, kernel_size=kernel_size, stride=2, padding=0
-            ),
         )
+
+        self.gru = nn.GRU(
+            input_size=8 * base_channels,
+            hidden_size=latent_size,
+            num_layers=2,
+            batch_first=True,
+            bidirectional=True,
+        )
+
+        self.output = nn.Linear(2 * latent_size, 1)
 
     def _block(self, in_channels, out_channels, kernel_size, stride, padding):
         return nn.Sequential(
@@ -55,15 +58,14 @@ class Critic(nn.Module):
         y: torch.Tensor,
         conditions: torch.Tensor,
     ):
-        y = y.permute(0, 2, 1)
-        y_encoded = self.input_feature_encoder(y)
+        T = y.size(1)
+        c = conditions.unsqueeze(1).expand(-1, T, -1)
+        x = torch.cat([y, c], dim=-1)
 
-        conditions_encoded = self.condition_encoder(conditions)
+        x = x.permute(0, 2, 1)
 
-        conditions_encoded = conditions_encoded.unsqueeze(-1).expand(
-            -1, -1, y_encoded.shape[2]
-        )
-        encoder_input = torch.cat([y_encoded, conditions_encoded], dim=1)
-        output = self.critic(encoder_input)
+        critic = self.critic(x)
+        _, h_n = self.gru(critic.permute(0, 2, 1))
 
-        return torch.mean(output, dim=2).squeeze(1)
+        pooled = torch.cat([h_n[-2], h_n[-1]], dim=1)
+        return self.output(pooled).squeeze(1)

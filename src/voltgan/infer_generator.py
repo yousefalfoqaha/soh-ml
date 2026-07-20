@@ -9,16 +9,17 @@ import matplotlib
 
 from voltgan.config import (
     CONV_BASE_CHANNELS,
+    CONV_HIDDEN_LAYERS,
     CONV_KERNEL_SIZE,
     GENERATOR_CHECKPOINT_PATH,
     GENERATOR_STATS_PATH,
     HDF_ROOT,
-    LATENT_DIM,
+    LATENT_SIZE,
     N_CONDITIONS_GAN,
-    PADDED_LENGTH,
+    NOISE_DIM,
     PLOTS_PATH,
 )
-from voltgan.models import BatterySequenceGenerator
+from voltgan.models import Generator
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -64,12 +65,13 @@ def _destandardize(arr: np.ndarray, s: dict) -> np.ndarray:
 
 
 def _load_model(device: str) -> torch.nn.Module:
-    model = BatterySequenceGenerator(
+    model = Generator(
         input_features=1,
         n_conditions=N_CONDITIONS_GAN,
         base_channels=CONV_BASE_CHANNELS,
-        latent_size=LATENT_DIM,
+        noise_dim=NOISE_DIM,
         kernel_size=CONV_KERNEL_SIZE,
+        latent_size=LATENT_SIZE,
     ).to(device)
 
     if GENERATOR_CHECKPOINT_PATH.exists():
@@ -101,11 +103,14 @@ def run_inference(
     )
     conditions_tensor = torch.tensor(conditions_std, dtype=torch.float32).to(device)
 
-    if orig_length < PADDED_LENGTH:
-        pad_len = PADDED_LENGTH - orig_length
-        X_tensor = F.pad(X_tensor, (0, 0, 0, pad_len))
+    downsample_factor = 5**CONV_HIDDEN_LAYERS
+    remainder = X_tensor.size(1) % downsample_factor
+    if remainder != 0:
+        pad_len = downsample_factor - remainder
+        X_tensor = F.pad(X_tensor, (0, 0, 0, pad_len), value=0.0)
 
-    y_hat = model(X_tensor, conditions_tensor)
+    noise = torch.rand(1, NOISE_DIM, device=device)
+    y_hat = model(X_tensor, conditions_tensor, noise)
 
     return y_hat.squeeze(0).cpu().numpy()[:orig_length]
 
@@ -178,7 +183,7 @@ def _plot(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run BatterySequenceGenerator inference on a single HDF file."
+        description="Run Generator inference on a single HDF file."
     )
     parser.add_argument(
         "--hdf",
