@@ -11,13 +11,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from voltgan.config import (
+    CONFERENCE_PATH,
     HDF_ROOT,
-    PLOTS_PATH,
     REFERENCE_CURRENT_RANGE,
     REFERENCE_TEMPERATURE_RANGE,
 )
-from voltgan.utils.discover import discover
 from voltgan.pipeline.soh_curve import fit_soh_curve, select_reference_points
+from voltgan.utils.discover import discover
 
 
 def _load_records(
@@ -92,16 +92,22 @@ def _plot_trajectories(
             label=f"{mcu} ({len(records)} files)",
         )
 
+    all_soHs = [
+        r[1] for records in per_mcu.values() for r in records if not np.isnan(r[1])
+    ]
+    y_min = min(all_soHs) if all_soHs else 0.0
+    y_max = 1.05
+    padding = (y_max - y_min) * 0.05
+    ax.set_ylim(y_min - padding, y_max)
+
     ax.set_xlabel("Discharge Cycles")
-    ax.set_ylabel("SoH (curve-fitted)")
-    ax.set_title("SoH Trajectories per MCU")
-    ax.set_ylim(0, 1.05)
+    ax.set_ylabel("SoH")
     ax.legend(fontsize=9, loc="best")
     ax.grid(True, alpha=0.3)
 
-    PLOTS_PATH.mkdir(parents=True, exist_ok=True)
-    out = PLOTS_PATH / "soh_trajectories.png"
-    fig.savefig(out, dpi=150, bbox_inches="tight")
+    CONFERENCE_PATH.mkdir(parents=True, exist_ok=True)
+    out = CONFERENCE_PATH / "soh_trajectories.pdf"
+    fig.savefig(out, bbox_inches="tight")
     plt.close(fig)
     return out
 
@@ -118,7 +124,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    mcus = args.mcus if args.mcus else [p.name for p in HDF_ROOT.iterdir() if p.is_dir()]
+    mcus = (
+        args.mcus if args.mcus else [p.name for p in HDF_ROOT.iterdir() if p.is_dir()]
+    )
 
     per_mcu = _load_records(mcus)
     if not any(per_mcu.values()):
@@ -131,3 +139,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

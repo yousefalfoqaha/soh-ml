@@ -1,0 +1,200 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{makecell}
+\usepackage{microtype}
+\usepackage{multirow}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{State of Health Estimation Using a Novel Dataset Under Extreme Temperature and Aging Conditions}
+
+\author{\IEEEauthorblockN{1\textsuperscript{st} Sahar Qaadan}
+	\IEEEauthorblockA{\textit{Department of Mechatronics Engineering} \\
+		\textit{German Jordanian University}\\
+		Madaba JO-11180, Jordan \\
+		sahar.qadan@gju.edu.jo}
+	\and
+	\IEEEauthorblockN{2\textsuperscript{nd} Yousef Alfoqaha}
+	\IEEEauthorblockA{\textit{Department of Computer Engineering} \\
+		\textit{German Jordanian University}\\
+		Madaba JO-11180, Jordan \\
+		y.mustafa1@gju.edu.jo}
+}
+
+\maketitle
+
+\begin{abstract}
+	WIP
+\end{abstract}
+
+\begin{IEEEkeywords}
+	WIP
+\end{IEEEkeywords}
+
+\section{Introduction}
+WIP
+
+\section{Data Processing}
+\subsection{Dataset}
+The dataset used was obtained from the Scienlab SL1007A charge-discharge testing platform, where eight Samsung INR21700-50E lithium-ion cells were tested from fresh SoH levels to beyond EOL. Telemetry of each cell was recorded using Measurement and Control Units (MCU1--MCU8) and exported using the ASAM Measurement Data Format (MF4). Cell specifications are given in Table \ref{tab:cell_specs}.
+
+\begin{table}[htbp]
+	\caption{CELL SPECIFICATIONS}
+	\label{tab:cell_specs}
+	\begin{center}
+		\begin{tabular}{lc}
+			\hline
+			\textbf{Parameter}                       & \textbf{Value}   \\
+			\hline
+			Nominal capacity ($C_{\text{nom}}$)      & $4.9\,\text{Ah}$ \\
+			Upper cut-off voltage ($U_{\text{max}}$) & $4.2\,\text{V}$  \\
+			Lower cut-off voltage ($U_{\text{min}}$) & $2.5\,\text{V}$  \\
+			\hline
+		\end{tabular}
+	\end{center}
+\end{table}
+
+\subsection{Test Protocols}
+Each cell underwent four discharge protocols across various ambient temperatures: Constant, Pulse, Hybrid Pulse Power Characterization (HPPC), and the Worldwide Harmonised Light Vehicles Test Cycle (WLTC) (Fig. \ref{fig:protocols}). Testing was divided into three sequential phases (Table \ref{tab:phase_soh_summary}):
+
+\begin{enumerate}
+	\item \textbf{Initial measurements:} Baseline testing on fresh cells across all four protocols.
+	\item \textbf{Accelerated aging:} Cyclic aging using constant 1C discharge cycles at $25^{\circ}\text{C}$.
+	\item \textbf{Post-aging measurement:} Re-testing using the baseline protocols.
+\end{enumerate}
+
+Temperature band distribution across phases is given in Table \ref{tab:temp_phase_matrix}.
+
+\begin{figure}[htbp]
+	\centerline{\includegraphics[width=\columnwidth]{discharge_protocols.pdf}}
+	\caption{Discharge profiles for the four test protocols: Constant, Pulse, HPPC, and WLTC.}
+	\label{fig:protocols}
+\end{figure}
+
+\begin{table}[htbp]
+	\caption{SOH, C-RATES, AND PROTOCOL DISTRIBUTION}
+	\label{tab:phase_soh_summary}
+	\begin{center}
+		\begin{tabular}{lccc}
+			\hline
+			\textbf{Phase} & \textbf{SoH Range (\%)} & \textbf{Current Rates}       & \textbf{Protocols} \\
+			\hline
+			Initial        & $98 - 100$              & $0.5\text{C}$ to $4\text{C}$ & \makecell{Constant \\ Pulse \\ HPPC \\ WLTC} \\
+			\hline
+			Aging          & $70 - 98$               & $1\text{C}$                  & Constant           \\
+			\hline
+			Post-Aging     & $< 70 - 80$             & $0.5\text{C}$ to $4\text{C}$ & \makecell{Constant \\ Pulse \\ HPPC} \\
+			\hline
+		\end{tabular}
+	\end{center}
+\end{table}
+
+\input{temp_distribution.tex}
+
+\subsection{Pre-processing Pipeline}
+As per the dataset engineer's advice, voltage (V), current (A), temperature (T), and ambient temperature ($T_{amb}$) are primary channels recorded from the test platform's sensors.
+The components of the pre-processing pipeline are as follows:
+
+\begin{enumerate}
+	\item \textbf{Extract discharge periods:} Using discharge start/end signals provided by the testing platform to filter only discharge periods.
+	\item \textbf{Hierarchical Data Format (HDF5):} Converting each discharge period away from MF4 to HDF5 allows for O(1) disk reads when loading the dataset, while also only taking primary channels (V, I, T, $T_{amb}$) to reduce memory usage.
+	\item \textbf{Static conditions metadata:} $T_{amb}$ is controlled by the test platform at a fixed value for each discharge period, thus an average value was taken and stored as an HDF5 attribute.
+	\item \textbf{Statistics metadata:} Statistics (mean, $M_2$, bounds) are stored as HDF5 attributes for standardization.
+	\item \textbf{SoH metadata:} SoH is calculated for each discharge period and written to HDF5 attributes (detailed below in Section D).
+\end{enumerate}
+
+\subsection{SoH Labeling}
+Raw SoH for each discharge period was computed via Coulomb counting:
+
+\begin{equation}
+	\text{SoH}_{\text{raw}} = \frac{\int_{t_{\text{start}}}^{t_{\text{end}}} |I(t)| \, dt}{C_{\text{nom}}}
+\end{equation}
+
+Because measured capacity varies with discharge rate and $T_{\text{amb}}$, reference points were filtered from $1\text{C}$ discharge cycles at $25^\circ\text{C}$. A Piecewise Cubic Hermite Interpolating Polynomial (PCHIP) was then fitted over the cycle indices to establish SoH trajectories for each MCU (Fig. \ref{fig:soh_trajectories}).
+
+\begin{figure}[htbp]
+	\centerline{\includegraphics[width=\columnwidth]{soh_trajectories.pdf}}
+	\caption{Fitted SoH trajectories for all eight MCUs across their full discharge cycle histories.}
+	\label{fig:soh_trajectories}
+\end{figure}
+
+\subsection{Statistics}
+Global dataset statistics are computed across all $N = \sum N_i$ time steps using the pre-aggregated file metadata ($N_i$, $\mu_i$, $M_{2,i}$) for normalization.
+
+\begin{equation}
+	\mu = \frac{\sum_i N_i \mu_i}{N}, \quad \sigma = \sqrt{\frac{\sum_i M_{2,i} + \sum_i N_i \mu_i^2 - N \mu^2}{N}}
+\end{equation}
+
+For scalar attributes, sample-wise mean and variance are calculated across all $K$ discharge instances (Table \ref{tab:feature_stats}).
+
+\input{feature_stats.tex}
+
+\section{Methodology}
+
+\subsection{Problem Formulation}
+Given a sequence of $V$, $I$, and $T$ over a discharge period, conditioned on $T_{\text{amb}}$, an estimator function $f(\cdot)$ predicts the cell's $\text{SoH}$:
+
+\begin{equation}
+	\widehat{\text{SoH}} = f(V, I, T \mid T_{\text{amb}})
+\end{equation}
+
+\subsection{Estimator Architecture}
+The estimator's architecture uses 1D Convolution Neural Network (1D-CNN) blocks (conv, norm, GELU, dropout), followed by a bidirectional Gated Recurrent Network (BiGRU), then a final pooling layer to predict an SoH value. The estimator is conditioned using Feature-wise Linear Modulation (FiLM):
+
+\begin{equation}
+	\text{FiLM}(h) = \gamma(T_{\text{amb}}) \odot h + \beta(T_{\text{amb}})
+\end{equation}
+
+where $h$ is the intermediate feature map, $\gamma(\cdot)$ and $\beta(\cdot)$ are learned affine parameters generated from $T_{\text{amb}}$, and $\odot$ denotes element-wise multiplication.
+
+\begin{figure}[htbp]
+	\centerline{\includegraphics[width=\columnwidth]{architecture_diagram.pdf}}
+	\caption{Model architecture: 1D-CNN blocks, BiGRU, and FiLM conditioning on $T_{\text{amb}}$.}
+	\label{fig:architecture}
+\end{figure}
+
+
+
+\subsection{Training Setup}
+For baseline testing, the dataset was sliced into 2000 timestep windows (approx. 30 minutes) with a stride of 500. The MCUS were organized into a 5, 1, 1 split for the training, validation and testing sets respectively. Additionally, normalization was applied to all input sequences and conditions. Estimator hyperparameters are given in Table \ref{tab:estimator_hparams}.
+
+\begin{table}[htbp]
+	\caption{ESTIMATOR HYPERPARAMETERS}
+	\label{tab:estimator_hparams}
+	\begin{center}
+		\begin{tabular}{lc}
+			\hline
+			\textbf{Hyperparameter} & \textbf{Value} \\
+			\hline
+			Conv. base channels     & $32$           \\
+			Conv. kernel size       & $7$            \\
+			Conv. stride            & $2$            \\
+			GRU hidden size         & $128$          \\
+			GRU layers              & $2$            \\
+			Dropout                 & $0.1$          \\
+			Batch size              & $512$          \\
+			Epochs                  & $500$          \\
+			Learning rate           & $0.0005$       \\
+			\hline
+		\end{tabular}
+	\end{center}
+\end{table}
+
+\subsection{Baseline Results and Discussion}
+Evaluation was performed on the validation and testing sets across SoH ranges (Table \ref{tab:baseline_results}) and temperature bands (Table \ref{tab:temp_results}).
+
+\input{baseline_results.tex}
+
+\input{temp_results.tex}
+
+
+\end{document}

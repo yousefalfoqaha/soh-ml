@@ -21,7 +21,7 @@ from voltgan.config import (
     LEARNING_RATE,
     LEAVE_OUT_TEMPERATURE_RANGE,
     N_CONDITIONS_GAN,
-    N_EPOCHS_GAN,
+    N_EPOCHS,
     NOISE_DIM,
     RANDOM_SEED,
     TRAINING_MCUS,
@@ -158,19 +158,19 @@ def main():
     )
 
     generator_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        generator_optim, T_max=N_EPOCHS_GAN, eta_min=5e-5
+        generator_optim, T_max=N_EPOCHS, eta_min=5e-5
     )
     critic_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        critic_optim, T_max=N_EPOCHS_GAN, eta_min=5e-5
+        critic_optim, T_max=N_EPOCHS, eta_min=5e-5
     )
 
     print(
         f"\nTrain batches: {len(training_loader)} | "
         f"Validation batches: {len(validation_loader)}"
     )
-    print(f"Training for {N_EPOCHS_GAN} epochs...")
+    print(f"Training for {N_EPOCHS} epochs...")
 
-    for epoch in range(N_EPOCHS_GAN):
+    for epoch in range(N_EPOCHS):
         generator.train()
         critic.train()
 
@@ -248,7 +248,7 @@ def main():
         # )
 
         print(
-            f"Epoch {epoch + 1:02d}/{N_EPOCHS_GAN} | "
+            f"Epoch {epoch + 1:02d}/{N_EPOCHS} | "
             f"Critic Loss: {mean_loss_train_critic:.5f} | "
             f"GP: {mean_loss_train_gp:.5f} | "
             f"Generator Loss: {mean_loss_train_generator:.5f} | "

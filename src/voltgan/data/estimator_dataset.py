@@ -34,8 +34,9 @@ class EstimatorDataset(torch.utils.data.Dataset):
         self._temp_delta_std = stats["temp_delta"]["standard_deviation"]
 
         self.windows = []
+        stride = 500
         for instance in instances:
-            for start in range(0, len(instance.data) - WINDOW_SIZE + 1, WINDOW_SIZE):
+            for start in range(0, len(instance.data) - WINDOW_SIZE + 1, stride):
                 self.windows.append((instance, start, start + WINDOW_SIZE))
         print(f"Loaded {len(self.windows)} windows from {len(instances)} instances.")
 
@@ -78,3 +79,4 @@ class EstimatorDataset(torch.utils.data.Dataset):
         y = torch.tensor([soh_standardized], dtype=torch.float32)
 
         return X, conditions, y
+

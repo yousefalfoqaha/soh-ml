@@ -18,7 +18,7 @@ from voltgan.config import (
     LATENT_SIZE,
     LEARNING_RATE,
     N_CONDITIONS_GAN,
-    N_EPOCHS_GAN,
+    N_EPOCHS,
     NOISE_DIM,
     RANDOM_SEED,
     TRAINING_MCUS,
@@ -140,9 +140,9 @@ def main():
         f"\nTrain batches: {len(training_loader)} | "
         f"Validation batches: {len(validation_loader)}"
     )
-    print(f"Training for {N_EPOCHS_GAN} epochs...")
+    print(f"Training for {N_EPOCHS} epochs...")
 
-    for epoch in range(N_EPOCHS_GAN):
+    for epoch in range(N_EPOCHS):
         generator.train()
         total_train_loss = 0.0
         n_batches = 0
@@ -192,7 +192,7 @@ def main():
 
         current_lr = optimizer.param_groups[0]["lr"]
         print(
-            f"Epoch {epoch + 1:02d}/{N_EPOCHS_GAN} | "
+            f"Epoch {epoch + 1:02d}/{N_EPOCHS} | "
             f"Train Loss: {mean_train_loss:.5f} | "
             f"Valid Loss: {val_note} | "
             f"LR: {current_lr:.2e}"

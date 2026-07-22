@@ -16,15 +16,15 @@ from torch.utils.data import DataLoader
 
 from voltgan.config import (
     BATCH_SIZE,
-    CONV_CHANNELS,
-    CONV_KERNEL_SIZES,
-    CONV_STRIDES,
     DROPOUT,
+    ESTIMATOR_BASE_CHANNELS,
     ESTIMATOR_CHECKPOINT_PATH,
+    ESTIMATOR_GRU_HIDDEN_SIZE,
+    ESTIMATOR_GRU_N_LAYERS,
     ESTIMATOR_INPUT_FEATURES,
+    ESTIMATOR_KERNEL_SIZE,
     ESTIMATOR_N_CONDITIONS,
-    GRU_HIDDEN_SIZE,
-    GRU_N_LAYERS,
+    ESTIMATOR_STRIDE,
     HDF_ROOT,
     LEARNING_RATE,
     N_EPOCHS,
@@ -94,11 +94,11 @@ def main():
     model = SohEstimator(
         input_features=ESTIMATOR_INPUT_FEATURES,
         n_conditions=ESTIMATOR_N_CONDITIONS,
-        conv_channels=CONV_CHANNELS,
-        conv_kernel_sizes=CONV_KERNEL_SIZES,
-        conv_strides=CONV_STRIDES,
-        gru_hidden_size=GRU_HIDDEN_SIZE,
-        gru_n_layers=GRU_N_LAYERS,
+        base_channels=ESTIMATOR_BASE_CHANNELS,
+        stride=ESTIMATOR_STRIDE,
+        kernel_size=ESTIMATOR_KERNEL_SIZE,
+        gru_hidden_size=ESTIMATOR_GRU_HIDDEN_SIZE,
+        gru_n_layers=ESTIMATOR_GRU_N_LAYERS,
         dropout=DROPOUT,
     ).to(device)
 

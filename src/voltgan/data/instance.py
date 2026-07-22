@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from typing import cast
 
@@ -21,11 +22,14 @@ class DischargeInstance:
 
             soh_file = f.attrs.get("curve_soh")
             ambient_temperature = f.attrs.get("ambient_temperature")
+            datetime_str = f.attrs.get("datetime")
             assert isinstance(soh_file, (float, np.floating))
             assert isinstance(ambient_temperature, (float, np.floating))
+            assert isinstance(datetime_str, str)
 
             self.soh = float(soh_file)
             self.ambient_temperature = float(ambient_temperature)
+            self.datetime = datetime.fromisoformat(datetime_str)
 
     def _load(self) -> np.ndarray:
         with h5py.File(self.filepath, "r") as f:
