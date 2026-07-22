@@ -148,13 +148,13 @@ Given a sequence of $V$, $I$, and $T$ over a discharge period, conditioned on $T
 \end{equation}
 
 \subsection{Estimator Architecture}
-The estimator's architecture uses 1D Convolution Neural Network (1D-CNN) blocks (conv, norm, GELU, dropout), followed by a bidirectional Gated Recurrent Network (BiGRU), then a final pooling layer to predict an SoH value. The estimator is conditioned using Feature-wise Linear Modulation (FiLM):
+Input sequences pass through three 1D Convolutional Neural Network (1D-CNN) blocks (32, 64, 128 channels; GroupNorm, GELU, dropout), followed by Feature-wise Linear Modulation (FiLM) conditioning on $T_{\text{amb}}$:
 
 \begin{equation}
 	\text{FiLM}(h) = \gamma(T_{\text{amb}}) \odot h + \beta(T_{\text{amb}})
 \end{equation}
 
-where $h$ is the intermediate feature map, $\gamma(\cdot)$ and $\beta(\cdot)$ are learned affine parameters generated from $T_{\text{amb}}$, and $\odot$ denotes element-wise multiplication.
+where $\gamma$ and $\beta$ are learned affine parameters. The modulated features pass through a 2-layer bidirectional Gated Recurrent Unit (BiGRU), whose final hidden states are concatenated and projected to a scalar SoH estimate.
 
 \begin{figure}[htbp]
 	\centerline{\includegraphics[width=\columnwidth]{architecture_diagram.pdf}}
