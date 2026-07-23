@@ -5,6 +5,7 @@
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{algorithmic}
 \usepackage{graphicx}
+\usepackage{float}
 \usepackage{textcomp}
 \usepackage{xcolor}
 \usepackage{makecell}
@@ -47,7 +48,7 @@ WIP
 \subsection{Dataset}
 The dataset used was obtained from the Scienlab SL1007A charge-discharge testing platform, where eight Samsung INR21700-50E lithium-ion cells were tested from fresh SoH levels to beyond EOL. Telemetry of each cell was recorded using Measurement and Control Units (MCU1--MCU8) and exported using the ASAM Measurement Data Format (MF4). Cell specifications are given in Table \ref{tab:cell_specs}.
 
-\begin{table}[htbp]
+\begin{table}[H]
 	\caption{CELL SPECIFICATIONS}
 	\label{tab:cell_specs}
 	\begin{center}
@@ -58,6 +59,10 @@ The dataset used was obtained from the Scienlab SL1007A charge-discharge testing
 			Nominal capacity ($C_{\text{nom}}$)      & $4.9\,\text{Ah}$ \\
 			Upper cut-off voltage ($U_{\text{max}}$) & $4.2\,\text{V}$  \\
 			Lower cut-off voltage ($U_{\text{min}}$) & $2.5\,\text{V}$  \\
+			Max. discharge current                   & $-20\,\text{A}$ ($-4.0\text{C}$) \\
+			Max. charge current                      & $8\,\text{A}$ ($2.0\text{C}$)   \\
+			Temperature range                        & $-20$ to $60\,^{\circ}\text{C}$ \\
+			State of charge range                    & $0$ to $100\,\%$                \\
 			\hline
 		\end{tabular}
 	\end{center}
@@ -74,13 +79,13 @@ Each cell underwent four discharge protocols across various ambient temperatures
 
 Temperature band distribution across phases is given in Table \ref{tab:temp_phase_matrix}.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
 	\centerline{\includegraphics[width=\columnwidth]{discharge_protocols.pdf}}
 	\caption{Discharge profiles for the four test protocols: Constant, Pulse, HPPC, and WLTC.}
 	\label{fig:protocols}
 \end{figure}
 
-\begin{table}[htbp]
+\begin{table}[H]
 	\caption{SOH, C-RATES, AND PROTOCOL DISTRIBUTION}
 	\label{tab:phase_soh_summary}
 	\begin{center}
@@ -121,7 +126,7 @@ Raw SoH for each discharge period was computed via Coulomb counting:
 
 Because measured capacity varies with discharge rate and $T_{\text{amb}}$, reference points were filtered from $1\text{C}$ discharge cycles at $25^\circ\text{C}$. A Piecewise Cubic Hermite Interpolating Polynomial (PCHIP) was then fitted over the cycle indices to establish SoH trajectories for each MCU (Fig. \ref{fig:soh_trajectories}).
 
-\begin{figure}[htbp]
+\begin{figure}[H]
 	\centerline{\includegraphics[width=\columnwidth]{soh_trajectories.pdf}}
 	\caption{Fitted SoH trajectories for all eight MCUs across their full discharge cycle histories.}
 	\label{fig:soh_trajectories}
@@ -156,8 +161,8 @@ Input sequences pass through three 1D Convolutional Neural Network (1D-CNN) bloc
 
 where $\gamma$ and $\beta$ are learned affine parameters. The modulated features pass through a 2-layer bidirectional Gated Recurrent Unit (BiGRU), whose final hidden states are concatenated and projected to a scalar SoH estimate.
 
-\begin{figure}[htbp]
-	\centerline{\includegraphics[width=\columnwidth]{architecture_diagram.pdf}}
+\begin{figure}[H]
+	\centerline{\includegraphics[width=\columnwidth]{architecture.pdf}}
 	\caption{Model architecture: 1D-CNN blocks, BiGRU, and FiLM conditioning on $T_{\text{amb}}$.}
 	\label{fig:architecture}
 \end{figure}
@@ -167,7 +172,7 @@ where $\gamma$ and $\beta$ are learned affine parameters. The modulated features
 \subsection{Training Setup}
 For baseline testing, the dataset was sliced into 2000 timestep windows (approx. 30 minutes) with a stride of 500. The MCUS were organized into a 5, 1, 1 split for the training, validation and testing sets respectively. Additionally, normalization was applied to all input sequences and conditions. Estimator hyperparameters are given in Table \ref{tab:estimator_hparams}.
 
-\begin{table}[htbp]
+\begin{table}[H]
 	\caption{ESTIMATOR HYPERPARAMETERS}
 	\label{tab:estimator_hparams}
 	\begin{center}
@@ -194,10 +199,10 @@ Evaluation was performed on the validation and testing sets across SoH ranges (T
 
 \input{baseline_results.tex}
 
+$R^2$ is negative for Initial ($-0.94$) and Post-Aging ($-1.16$), an artifact of their narrow SoH windows ($92.5$--$97.4\%$ and $74.0$--$82.5\%$). With little target variance, $R^2$ amplifies residual error and is uninformative, so RMSE and \%Err are the meaningful metrics. Initial achieves $1.4\%$ error (RMSE $0.018$). Aging is the strongest phase ($R^2 = 0.86$, $1.3\%$ error, RMSE $0.015$): its single $1$C constant discharge shape gives a consistent waveform the CNN/BiGRU exploits while still tracking declining SoH across discharges. Post-Aging error rises to $3.9\%$ (RMSE $0.039$) because the MCUs' SoH trajectories diverge after accelerated aging, producing a sparser distribution less represented in training. Overall, $R^2 = 0.88$ and $1.7\%$ error span $74.0$--$97.4\%$ SoH.
+
 \input{temp_results.tex}
 
-Table \ref{tab:baseline_results} reports phase-wise performance. $R^2$ is negative for Initial ($-0.94$) and Post-Aging ($-1.16$), an artifact of their narrow SoH windows ($92.5$--$97.4\%$ and $74.0$--$82.5\%$). With little target variance, $R^2$ amplifies residual error and is uninformative, so RMSE and \%Err are the meaningful metrics. Initial achieves $1.4\%$ error (RMSE $0.018$). Aging is the strongest phase ($R^2 = 0.86$, $1.3\%$ error, RMSE $0.015$): its single $1$C constant discharge shape gives a consistent waveform the CNN/BiGRU exploits while still tracking declining SoH across discharges. Post-Aging error rises to $3.9\%$ (RMSE $0.039$) because the MCUs' SoH trajectories diverge after accelerated aging, producing a sparser distribution less represented in training. Overall, $R^2 = 0.88$ and $1.7\%$ error span $74.0$--$97.4\%$ SoH.
-
-Table \ref{tab:temp_results} disaggregates by temperature band. The estimator performs consistently at both ends of the SoH spectrum within each band. For example, $-20^{\circ}\text{C}$ spans $74.0$--$96.4\%$ at $R^2 = 0.93$ and $40^{\circ}\text{C}$ spans $75.6$--$97.4\%$ at $R^2 = 0.95$, indicating degradation capture is independent of temperature scale. The $25^{\circ}\text{C}$ band holds the most cycles ($236$) and widest SoH coverage, yielding the lowest $R^2$ ($0.85$) from greater target variance. The validation MCU's SoH trajectory with predicted points is shown in Fig. \ref{fig:val_trajectory}.
+The estimator performs consistently at both ends of the SoH spectrum within each temperature band. For example, $-20^{\circ}\text{C}$ spans $74.0$--$96.4\%$ at $R^2 = 0.93$ and $40^{\circ}\text{C}$ spans $75.6$--$97.4\%$ at $R^2 = 0.95$, indicating degradation capture is independent of temperature scale. The $25^{\circ}\text{C}$ band holds the most cycles ($236$) and widest SoH coverage, yielding the lowest $R^2$ ($0.85$) from greater target variance. The validation MCU's SoH trajectory with predicted points is shown in Fig. \ref{fig:val_trajectory}.
 
 \end{document}

@@ -172,7 +172,7 @@ def main() -> None:
         overall_m: dict,
     ) -> None:
         lines = [
-            r"\begin{table}[htbp]",
+            r"\begin{table}[H]",
             rf"    \caption{{{caption}}}",
             rf"    \label{{{label}}}",
             r"    \begin{center}",
