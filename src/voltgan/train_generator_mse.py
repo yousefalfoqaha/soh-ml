@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 
 from voltgan.config import (
     BATCH_SIZE,
+    CHUNK_SIZE,
     CONV_BASE_CHANNELS,
     CONV_HIDDEN_LAYERS,
     CONV_KERNEL_SIZE,
@@ -134,7 +135,7 @@ def main():
     ).to(device)
 
     optimizer = torch.optim.Adam(generator.parameters(), lr=LEARNING_RATE)
-    criterion = nn.MSELoss()
+    criterion = nn.MSELoss(reduction="sum")
 
     print(
         f"\nTrain batches: {len(training_loader)} | "
@@ -153,15 +154,27 @@ def main():
             y = y.to(device, non_blocking=True)
 
             noise = torch.rand(X.size(0), NOISE_DIM, device=device)
-            y_pred = generator(X, conditions, noise)
 
-            loss = criterion(y_pred, y)
-
+            seq_len = X.size(1)
             optimizer.zero_grad(set_to_none=True)
-            loss.backward()
+            h = None
+            batch_loss = 0.0
+            for start in range(0, seq_len, CHUNK_SIZE):
+                end = start + CHUNK_SIZE
+                X_c = X[:, start:end, :]
+                y_c = y[:, start:end, :]
+
+                latent_input = generator.encode(X_c, conditions, noise)
+                out, h = generator.gru(latent_input, h)
+                y_pred_chunk = generator.output(out)
+                chunk_loss = criterion(y_pred_chunk, y_c) / y.numel()
+                chunk_loss.backward()
+                batch_loss += chunk_loss.item()
+                h = h.detach()
+
             optimizer.step()
 
-            total_train_loss += loss.item()
+            total_train_loss += batch_loss
             n_batches += 1
 
         generator.eval()
@@ -176,7 +189,7 @@ def main():
                 noise = torch.rand(X.size(0), NOISE_DIM, device=device)
                 y_pred = generator(X, conditions, noise)
 
-                loss = criterion(y_pred, y)
+                loss = criterion(y_pred, y) / y.numel()
                 total_val_loss += loss.item()
                 n_val_batches += 1
 

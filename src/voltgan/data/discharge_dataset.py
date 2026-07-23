@@ -67,7 +67,7 @@ class DischargeDataset(torch.utils.data.Dataset):
         # (2,)
         conditions = torch.tensor([soh, ambient_temperature], dtype=torch.float32)
 
-        # (instance_length, 2)
-        y = torch.stack([voltage, temperature], dim=1)
+        # (instance_length, 1)
+        y = torch.stack([voltage], dim=1)
 
         return X, conditions, y

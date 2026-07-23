@@ -22,10 +22,11 @@ class Generator(nn.Module):
         padding = (kernel_size - 1) // 2
         in_channels = input_features + n_conditions + noise_dim
 
-        self.input_feature_encoder = nn.Sequential(
+        self.encoder = nn.Sequential(
             nn.Conv1d(
                 in_channels,
                 base_channels,
+                stride=1,
                 kernel_size=kernel_size,
                 padding=(kernel_size - 1) // 2,
             ),
@@ -56,17 +57,24 @@ class Generator(nn.Module):
             batch_first=True,
             dropout=dropout,
         )
-        self.temperature_output = nn.Conv1d(2 * base_channels, 1, kernel_size=1)
+        self.output = nn.Linear(latent_size, 1)
 
     def _conv_block(self, in_channels, out_channels, kernel_size, padding, dropout):
         return nn.Sequential(
-            nn.Conv1d(in_channels, out_channels, kernel_size, padding, bias=False),
+            nn.Conv1d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                padding=padding,
+                stride=1,
+                bias=False,
+            ),
             nn.InstanceNorm1d(out_channels, affine=True),
             nn.LeakyReLU(LEAKY_SLOPE),
             nn.Dropout(dropout),
         )
 
-    def forward(self, X, conditions, noise):
+    def encode(self, X, conditions, noise):
         _, sequence_length, _ = X.shape
 
         x = X.permute(0, 2, 1)
@@ -74,20 +82,12 @@ class Generator(nn.Module):
         noise_expanded = noise.unsqueeze(-1).expand(-1, -1, sequence_length)
         x = torch.cat([x, cond_expanded, noise_expanded], dim=1)
 
-        encoder_output = self.input_feature_encoder(x)
+        encoder_output = self.encoder(x)
 
         latent_input = encoder_output.permute(0, 2, 1)
+        return latent_input
+
+    def forward(self, X, conditions, noise):
+        latent_input = self.encode(X, conditions, noise)
         latent_output, _ = self.gru(latent_input)
-
-        latent_output = latent_output.permute(0, 2, 1)
-
-        voltage_features = self.voltage_decoder(latent_output)
-        temperature_features = self.temperature_decoder(latent_output)
-
-        combined_features = torch.cat([voltage_features, temperature_features], dim=1)
-        voltage_output = self.voltage_output(voltage_features)
-        temperature_output = self.temperature_output(combined_features)
-
-        output = torch.cat([voltage_output, temperature_output], dim=1)
-
-        return output.permute(0, 2, 1)[:, :sequence_length, :]
+        return self.output(latent_output)
