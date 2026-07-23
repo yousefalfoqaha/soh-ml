@@ -128,7 +128,7 @@ Because measured capacity varies with discharge rate and $T_{\text{amb}}$, refer
 \end{figure}
 
 \subsection{Statistics}
-Global dataset statistics are computed across all $N = \sum N_i$ time steps using the pre-aggregated file metadata ($N_i$, $\mu_i$, $M_{2,i}$) for normalization.
+Global dataset statistics are computed across all $N = \sum N_i$ time steps using the pre-aggregated file metadata ($N_i$, $\mu_i$, $M_{2,i}$) for normalization:
 
 \begin{equation}
 	\mu = \frac{\sum_i N_i \mu_i}{N}, \quad \sigma = \sqrt{\frac{\sum_i M_{2,i} + \sum_i N_i \mu_i^2 - N \mu^2}{N}}

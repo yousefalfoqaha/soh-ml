@@ -18,9 +18,8 @@ class Generator(nn.Module):
         super().__init__()
         self.n_conditions = n_conditions
         self.noise_dim = noise_dim
-        stride = 5
 
-        padding = (kernel_size - stride) // 2
+        padding = (kernel_size - 1) // 2
         in_channels = input_features + n_conditions + noise_dim
 
         self.input_feature_encoder = nn.Sequential(
@@ -28,26 +27,23 @@ class Generator(nn.Module):
                 in_channels,
                 base_channels,
                 kernel_size=kernel_size,
-                stride=1,
                 padding=(kernel_size - 1) // 2,
             ),
             nn.LeakyReLU(LEAKY_SLOPE),
-            self._encoder_block(
-                base_channels, 2 * base_channels, kernel_size, stride, padding, dropout
+            self._conv_block(
+                base_channels, 2 * base_channels, kernel_size, padding, dropout
             ),
-            self._encoder_block(
+            self._conv_block(
                 2 * base_channels,
                 4 * base_channels,
                 kernel_size,
-                stride,
                 padding,
                 dropout,
             ),
-            self._encoder_block(
+            self._conv_block(
                 4 * base_channels,
                 8 * base_channels,
                 kernel_size,
-                stride,
                 padding,
                 dropout,
             ),
@@ -58,125 +54,15 @@ class Generator(nn.Module):
             hidden_size=latent_size,
             num_layers=2,
             batch_first=True,
-            bidirectional=True,
             dropout=dropout,
         )
-
-        self.voltage_decoder = nn.Sequential(
-            nn.Conv1d(
-                2 * latent_size,
-                8 * base_channels,
-                kernel_size=kernel_size,
-                stride=1,
-                padding=(kernel_size - 1) // 2,
-                bias=False,
-            ),
-            nn.ReLU(),
-            self._decoder_block(
-                8 * base_channels,
-                4 * base_channels,
-                kernel_size,
-                stride,
-                padding,
-                1,
-                dropout,
-            ),
-            self._decoder_block(
-                4 * base_channels,
-                2 * base_channels,
-                kernel_size,
-                stride,
-                padding,
-                1,
-                dropout,
-            ),
-            self._decoder_block(
-                2 * base_channels,
-                base_channels,
-                kernel_size,
-                stride,
-                padding,
-                1,
-                dropout,
-            ),
-        )
-
-        self.temperature_decoder = nn.Sequential(
-            nn.Conv1d(
-                (2 * latent_size),
-                8 * base_channels,
-                kernel_size=kernel_size,
-                stride=1,
-                padding=(kernel_size - 1) // 2,
-                bias=False,
-            ),
-            nn.ReLU(),
-            self._decoder_block(
-                8 * base_channels,
-                4 * base_channels,
-                kernel_size,
-                stride,
-                padding,
-                1,
-                dropout,
-            ),
-            self._decoder_block(
-                4 * base_channels,
-                2 * base_channels,
-                kernel_size,
-                stride,
-                padding,
-                1,
-                dropout,
-            ),
-            self._decoder_block(
-                2 * base_channels,
-                base_channels,
-                kernel_size,
-                stride,
-                padding,
-                1,
-                dropout,
-            ),
-        )
-
-        self.voltage_output = nn.Conv1d(base_channels, 1, kernel_size=1)
         self.temperature_output = nn.Conv1d(2 * base_channels, 1, kernel_size=1)
 
-    def _encoder_block(
-        self, in_channels, out_channels, kernel_size, stride, padding, dropout
-    ):
+    def _conv_block(self, in_channels, out_channels, kernel_size, padding, dropout):
         return nn.Sequential(
-            nn.Conv1d(
-                in_channels, out_channels, kernel_size, stride, padding, bias=False
-            ),
+            nn.Conv1d(in_channels, out_channels, kernel_size, padding, bias=False),
             nn.InstanceNorm1d(out_channels, affine=True),
             nn.LeakyReLU(LEAKY_SLOPE),
-            nn.Dropout(dropout),
-        )
-
-    def _decoder_block(
-        self,
-        in_channels,
-        out_channels,
-        kernel_size,
-        stride,
-        padding,
-        output_padding,
-        dropout,
-    ):
-        return nn.Sequential(
-            nn.ConvTranspose1d(
-                in_channels,
-                out_channels,
-                kernel_size,
-                stride,
-                padding,
-                output_padding,
-                bias=False,
-            ),
-            # nn.BatchNorm1d(out_channels, affine=True),
-            nn.ReLU(),
             nn.Dropout(dropout),
         )
 
