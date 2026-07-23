@@ -141,20 +141,26 @@ def main() -> None:
         }
 
     def _row(label: str, m: dict, bold: bool = False) -> str:
-        r2_str = f"{m['r2']:.3f}" if m["r2"] is not None else "--"
-        pct_str = f"{m['pct_err']:.2f}" + r"\%"
+        r2_str = f"{m['r2']:.2f}" if m["r2"] is not None else "--"
+        pct_str = f"{m['pct_err']:.1f}" + r"\%"
+        soh_str = rf"\textbf{{{m['soh_range']}}}" if bold else m["soh_range"]
         if bold:
-            return (
-                rf"\textbf{{{label}}} & \textbf{{{m['soh_range']}}} & "
-                rf"$\mathbf{{{m['rmse']:.4f}}}$ & $\mathbf{{{m['mae']:.4f}}}$ & "
-                rf"$\mathbf{{{r2_str}}}$ & $\mathbf{{{pct_str}}}$ & "
-                rf"\textbf{{{m['cycles']}}}" + r" \\"
-            )
+            label_str = rf"\textbf{{{label}}}"
+            rmse_str = rf"$\mathbf{{{m['rmse']:.3f}}}$"
+            mae_str = rf"$\mathbf{{{m['mae']:.3f}}}$"
+            r2_full = rf"$\mathbf{{{r2_str}}}$" if r2_str != "--" else "--"
+            pct_full = rf"$\mathbf{{{pct_str}}}$"
+            cyc_str = rf"\textbf{{{m['cycles']}}}"
+        else:
+            label_str = label
+            rmse_str = f"{m['rmse']:.3f}"
+            mae_str = f"{m['mae']:.3f}"
+            r2_full = r2_str if r2_str == "--" else f"${r2_str}$"
+            pct_full = f"{pct_str}"
+            cyc_str = str(m["cycles"])
         return (
-            f"{label} & {m['soh_range']} & "
-            f"{m['rmse']:.4f} & {m['mae']:.4f} & "
-            f"{r2_str} & {pct_str} & "
-            f"{m['cycles']}" + r" \\"
+            f"{label_str} & {soh_str} & {rmse_str} & {mae_str} & "
+            f"{r2_full} & {pct_full} & {cyc_str}" + r" \\"
         )
 
     def _write_table(
@@ -170,9 +176,10 @@ def main() -> None:
             rf"    \caption{{{caption}}}",
             rf"    \label{{{label}}}",
             r"    \begin{center}",
-            r"        \begin{tabular}{lcccccc}",
+            r"        \footnotesize",
+            r"        \begin{tabular}{@{}lcccccc@{}}",
             r"            \hline",
-            rf"            \textbf{{{first_header}}} & \textbf{{SoH (\%)}} & \textbf{{RMSE}} & \textbf{{MAE}} & \textbf{{R\textsuperscript{{2}}}} & \textbf{{\%Err}} & \textbf{{Cycles}} \\",
+            rf"            \textbf{{{first_header}}} & \textbf{{SoH}} & \textbf{{RMSE}} & \textbf{{MAE}} & \textbf{{R\textsuperscript{{2}}}} & \textbf{{\%Err}} & \textbf{{Cycles}} \\",
             r"            \hline",
             *rows,
             r"            \hline",
