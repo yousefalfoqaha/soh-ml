@@ -2,14 +2,10 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
-from datetime import datetime
 
-from voltgan.config import HDF_ROOT, PROJECT_ROOT
+from voltgan.config import HDF_ROOT, PHASE_ORDER, PROJECT_ROOT
 from voltgan.utils.discover import load_instances
 
-_AGING_START = datetime(2025, 2, 12)
-_AGING_END = datetime(2025, 3, 8)
-_PHASE_ORDER = ["Initial", "Aging", "Post-Aging"]
 _ALL_MCUS = [f"mcu{i}" for i in range(1, 9)]
 
 
@@ -34,14 +30,7 @@ def main() -> None:
 
     counts: dict[tuple[str, int], int] = defaultdict(int)
     for inst in instances:
-        dt = inst.datetime
-        phase = (
-            "Initial"
-            if dt < _AGING_START
-            else "Aging"
-            if dt <= _AGING_END
-            else "Post-Aging"
-        )
+        phase = inst.phase
         temp_center = int(round(inst.ambient_temperature / 5) * 5)
         counts[(phase, temp_center)] += 1
 
@@ -70,7 +59,7 @@ def main() -> None:
 
     col_totals = [0] * n_bands
 
-    for phase in _PHASE_ORDER:
+    for phase in PHASE_ORDER:
         row_counts = [counts.get((phase, tc), 0) for tc in temp_bands]
         for i, c in enumerate(row_counts):
             col_totals[i] += c

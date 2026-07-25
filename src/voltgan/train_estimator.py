@@ -3,6 +3,8 @@ import matplotlib
 from voltgan.models.soh_estimator import SohEstimator
 
 matplotlib.use("Agg")
+import json
+
 import torch
 import torch._inductor.config as inductor_config
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -30,10 +32,11 @@ from voltgan.config import (
     N_EPOCHS,
     RANDOM_SEED,
     STATS_PATH,
+    TESTING_MCUS,
     TRAINING_MCUS,
     VALIDATION_MCUS,
 )
-from voltgan.data import EstimatorDataset, Standardizer
+from voltgan.data import EstimatorDataset
 from voltgan.models import SohEstimator
 from voltgan.utils.discover import load_instances
 
@@ -54,7 +57,6 @@ def _worker_init(worker_id):
 
 
 def main():
-    torch.set_float32_matmul_precision("high")
     torch.manual_seed(RANDOM_SEED)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -63,11 +65,11 @@ def main():
     hdf_data_path = HDF_ROOT
 
     train_instances = load_instances(hdf_data_path, TRAINING_MCUS)
-    val_instances = load_instances(hdf_data_path, VALIDATION_MCUS)
+    val_mcus = VALIDATION_MCUS + TESTING_MCUS
+    val_instances = load_instances(hdf_data_path, val_mcus)
 
-    standardizer = Standardizer(STATS_PATH)
-    stats = standardizer.compute(train_instances)
-    standardizer.save()
+    with open(STATS_PATH) as f:
+        stats = json.load(f)
 
     training_dataset = EstimatorDataset(instances=train_instances, stats=stats)
     validation_dataset = EstimatorDataset(instances=val_instances, stats=stats)
@@ -106,7 +108,7 @@ def main():
 
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", patience=10, factor=0.1
+        optimizer, mode="min", patience=10, factor=0.05
     )
 
     train_and_validate(
@@ -133,11 +135,19 @@ def train_and_validate(
     validation_loader: DataLoader,
     n_epochs: int,
     device: str,
+    patience: int = 50,
 ) -> None:
     print(
         f"Train batches: {len(training_loader)} | Validation batches: {len(validation_loader)}"
     )
-    print(f"Starting training for {n_epochs} epochs...")
+    print(
+        f"Starting training for {n_epochs} epochs (early stopping patience={patience})..."
+    )
+
+    best_val_loss = float("inf")
+    best_state = None
+    epochs_no_improve = 0
+    prev_lr = optimizer.param_groups[0]["lr"]
 
     for epoch in range(n_epochs):
         total_training_loss = 0.0
@@ -177,14 +187,35 @@ def train_and_validate(
 
         scheduler.step(average_validation_loss)
 
+        cur_lr = optimizer.param_groups[0]["lr"]
+        lr_marker = " ↓" if cur_lr < prev_lr - 1e-12 else ""
+        prev_lr = cur_lr
+
         print(
             f"Epoch {epoch + 1:02d}/{n_epochs} | "
+            f"lr={cur_lr:.2e}{lr_marker} | "
             f"Train Loss: {average_training_loss:.5f} | "
             f"Valid Loss: {average_validation_loss:.5f}"
         )
 
+        if average_validation_loss < best_val_loss:
+            best_val_loss = average_validation_loss
+            best_state = {k: v.clone() for k, v in model.state_dict().items()}
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+            if epochs_no_improve >= patience:
+                print(
+                    f"Early stopping at epoch {epoch + 1} (no improvement for {patience} epochs)."
+                )
+                break
+
         if _interrupted:
             break
+
+    if best_state is not None:
+        model.load_state_dict(best_state)
+        print(f"Restored best model (val loss={best_val_loss:.5f}).")
 
 
 if __name__ == "__main__":

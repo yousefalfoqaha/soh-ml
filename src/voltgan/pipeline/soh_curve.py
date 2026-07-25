@@ -1,63 +1,49 @@
+from __future__ import annotations
+
+from collections.abc import Callable
 from pathlib import Path
 
 import h5py
 import numpy as np
-from scipy.interpolate import PchipInterpolator
+from scipy.optimize import curve_fit
+
+from voltgan.utils.reference import select_reference_points
 
 _NAN = float("nan")
 
 
-def select_reference_points(
-    records: list[tuple[float, float, float, float]],
-    ref_temp_range: tuple[float, float],
-    ref_current_range: tuple[float, float],
-) -> list[tuple[float, float]]:
-    """Return every qualifying (discharge_cycle_index, soh) measurement."""
-    ref_lo, ref_hi = ref_temp_range
-    cur_lo, cur_hi = ref_current_range
-
-    ref_points: list[tuple[float, float]] = []
-    for dci, soh, amb, mni in records:
-        if ref_lo <= amb <= ref_hi and cur_lo <= mni <= cur_hi:
-            ref_points.append((dci, soh))
-    return ref_points
+def _poly4(x, a, b, c, d, e):
+    return a + b * x + c * x**2 + d * x**3 + e * x**4
 
 
 def fit_soh_curve(
     ref_points: list[tuple[float, float]],
-) -> tuple[PchipInterpolator, float, float, float, float] | None:
-    """Fit a PCHIP curve from reference points.
+) -> tuple[Callable[[float], float], float, float, float, float] | None:
+    """Fit a degree-4 SoH degradation curve from reference points.
 
-    Points sharing the same discharge cycle index get tiny increments
-    so each measurement is its own data point (no averaging).
+    Uses Levenberg-Marquardt (``scipy.optimize.curve_fit``).
 
-    Returns (curve, first_dci, last_dci, first_soh, last_soh) or None.
+    Returns ``(model, first_dci, last_dci, first_soh, last_soh)`` where
+    ``model`` is a callable ``model(x) -> float`` for any cycle index
+    (including extrapolation beyond the last reference point), or ``None``.
     """
-    if len(ref_points) < 2:
+    if len(ref_points) < 5:
         return None
 
     ref_points = sorted(ref_points, key=lambda p: p[0])
+    dci = np.array([p[0] for p in ref_points], dtype=float)
+    soh = np.array([p[1] for p in ref_points], dtype=float)
 
-    dci_seen: dict[float, int] = {}
-    ref_dci: list[float] = []
-    ref_soh: list[float] = []
-    for dci, soh in ref_points:
-        offset = dci_seen.get(dci, 0)
-        dci_seen[dci] = offset + 1
-        ref_dci.append(dci + offset * 1e-3)
-        ref_soh.append(soh)
+    popt, _ = curve_fit(_poly4, dci, soh, p0=[soh[0], -0.001, -1e-5, 1e-7, 1e-9])
 
-    ref_dci_arr = np.array(ref_dci)
-    ref_soh_arr = np.array(ref_soh)
+    model = lambda x: float(_poly4(x, *popt))
 
-    curve = PchipInterpolator(ref_dci_arr, ref_soh_arr)
+    first_dci = float(dci[0])
+    last_dci = float(dci[-1])
+    first_soh = float(model(first_dci))
+    last_soh = float(model(last_dci))
 
-    first_dci = float(ref_dci_arr[0])
-    last_dci = float(ref_dci_arr[-1])
-    first_soh = float(ref_soh_arr[0])
-    last_soh = float(ref_soh_arr[-1])
-
-    return curve, first_dci, last_dci, first_soh, last_soh
+    return model, first_dci, last_dci, first_soh, last_soh
 
 
 def fit_soh_curves(
@@ -82,7 +68,7 @@ def fit_soh_curves(
         for hdf_path in hdf_paths:
             with h5py.File(hdf_path, "r") as f:
                 dci = float(f.attrs["discharge_cycle_index"])
-                soh = float(f.attrs["soh"])
+                soh = float(f.attrs.get("soh", _NAN))
                 amb = float(f.attrs["ambient_temperature"])
                 mni = float(f.attrs["mean_neg_current"])
 
@@ -103,26 +89,29 @@ def fit_soh_curves(
             )
             continue
 
-        curve, first_dci, last_dci, first_soh, last_soh = fit
+        model, first_dci, last_dci, first_soh, last_soh = fit
+
+        rmse = float(
+            np.sqrt(
+                np.mean(
+                    (
+                        np.array([model(p[0]) for p in ref_points])
+                        - np.array([p[1] for p in ref_points])
+                    )
+                    ** 2
+                )
+            )
+        )
 
         print(
-            f"[soh_curve] {mcu}: fitted curve with {len(ref_points)} reference "
-            f"points, cycle {first_dci:.0f} → {last_dci:.0f}, "
-            f"SoH {first_soh:.4f} → {last_soh:.4f}"
+            f"[soh_curve] {mcu}: fitted deg4 with {len(ref_points)} reference "
+            f"points, cycle {first_dci:.0f} -> {last_dci:.0f}, "
+            f"SoH {first_soh:.4f} -> {last_soh:.4f}, RMSE={rmse:.5f}"
         )
 
         for dci, raw_soh, amb, mni, hdf_path in records:
-            is_ref = ref_lo <= amb <= ref_hi and cur_lo <= mni <= cur_hi
-
-            if dci <= first_dci:
-                fitted_soh = first_soh
-            elif dci >= last_dci:
-                fitted_soh = last_soh
-            else:
-                fitted_soh = float(curve(dci))
+            fitted_soh = float(model(dci))
             fitted_soh = min(max(fitted_soh, 0.0), 1.0)
 
             with h5py.File(hdf_path, "a") as f:
                 f.attrs["curve_soh"] = fitted_soh
-                f.attrs["soh"] = raw_soh if is_ref else _NAN
-

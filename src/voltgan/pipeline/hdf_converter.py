@@ -3,7 +3,16 @@ from pathlib import Path
 import h5py
 import numpy as np
 
+from voltgan.config import AGING_END, AGING_START
 from voltgan.pipeline.base import PipelineHandler, SampleContext, _parse_datetime
+
+
+def _phase_of(dt) -> str:
+    if dt < AGING_START:
+        return "Initial"
+    if dt <= AGING_END:
+        return "Aging"
+    return "Post-Aging"
 
 
 class HdfConvertHandler(PipelineHandler):
@@ -50,13 +59,16 @@ class HdfConvertHandler(PipelineHandler):
             time_from_zero=False,
         )
 
+        dt = _parse_datetime(context.source_path)
+        phase = _phase_of(dt)
+
         discharge_cycle_index = context.metadata.get("discharge_cycle_index", 0)
 
         for instance, target_file in zip(instances, target_files):
             if target_file.exists():
                 continue
 
-            start_t, end_t, soh, mean_neg_current, ambient_temperature = instance
+            start_t, end_t, protocol, soh, mean_neg_current, ambient_temperature = instance
             start_t = max(start_t, df.index[0])
             end_t = min(end_t, df.index[-1])
             instance_df = df.loc[start_t:end_t]
@@ -73,8 +85,6 @@ class HdfConvertHandler(PipelineHandler):
                 for channel in instance_df.columns
             }
 
-            dt = _parse_datetime(context.source_path)
-
             with h5py.File(target_file, "w") as f:
                 group = f.create_group(target_file.name)
                 for channel, samples in resampled.items():
@@ -84,6 +94,8 @@ class HdfConvertHandler(PipelineHandler):
                 f.attrs["mean_neg_current"] = mean_neg_current
                 f.attrs["datetime"] = dt.isoformat()
                 f.attrs["discharge_cycle_index"] = discharge_cycle_index
+                f.attrs["protocol"] = protocol
+                f.attrs["phase"] = phase
 
             discharge_cycle_index += 1
 

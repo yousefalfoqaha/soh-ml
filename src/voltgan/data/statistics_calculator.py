@@ -8,12 +8,14 @@ from voltgan.data.instance import DischargeInstance
 from voltgan.utils.box_table import print_box_table
 
 
-class Standardizer:
-    def __init__(self, stats_path: Path):
-        self.stats_path = stats_path
+class StatisticsCalculator:
+    def __init__(self, save_path: Path | None):
+        self.save_path = save_path
         self.stats = {}
 
-    def compute(self, instances: list[DischargeInstance]) -> dict[str, dict[str, float]]:
+    def compute(
+        self, instances: list[DischargeInstance]
+    ) -> dict[str, dict[str, float]]:
         channel_stats: dict[str, dict[str, float]] = {}
         total_rows = 0
 
@@ -90,9 +92,12 @@ class Standardizer:
         return result
 
     def save(self) -> None:
-        self.stats_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.stats_path, "w") as f:
-            json.dump(self.stats, f, indent=2)
+        if self.save_path is not None:
+            self.save_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.save_path, "w") as f:
+                json.dump(self.stats, f, indent=2)
+        else:
+            print("No path to persist stats.")
 
     @staticmethod
     def _print_stats(stats: dict[str, dict[str, float]], total_rows: int):

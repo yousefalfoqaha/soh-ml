@@ -54,15 +54,15 @@ The dataset used was obtained from the Scienlab SL1007A charge-discharge testing
 	\begin{center}
 		\begin{tabular}{lc}
 			\hline
-			\textbf{Parameter}                       & \textbf{Value}   \\
+			\textbf{Parameter}                       & \textbf{Value}                   \\
 			\hline
-			Nominal capacity ($C_{\text{nom}}$)      & $4.9\,\text{Ah}$ \\
-			Upper cut-off voltage ($U_{\text{max}}$) & $4.2\,\text{V}$  \\
-			Lower cut-off voltage ($U_{\text{min}}$) & $2.5\,\text{V}$  \\
+			Nominal capacity ($C_{\text{nom}}$)      & $4.9\,\text{Ah}$                 \\
+			Upper cut-off voltage ($U_{\text{max}}$) & $4.2\,\text{V}$                  \\
+			Lower cut-off voltage ($U_{\text{min}}$) & $2.5\,\text{V}$                  \\
 			Max. discharge current                   & $-20\,\text{A}$ ($-4.0\text{C}$) \\
-			Max. charge current                      & $8\,\text{A}$ ($2.0\text{C}$)   \\
-			Temperature range                        & $-20$ to $60\,^{\circ}\text{C}$ \\
-			State of charge range                    & $0$ to $100\,\%$                \\
+			Max. charge current                      & $8\,\text{A}$ ($2.0\text{C}$)    \\
+			Temperature range                        & $-20$ to $60\,^{\circ}\text{C}$  \\
+			State of charge range                    & $0$ to $100\,\%$                 \\
 			\hline
 		\end{tabular}
 	\end{center}
@@ -124,13 +124,15 @@ Raw SoH for each discharge period was computed via Coulomb counting:
 	\text{SoH}_{\text{raw}} = \frac{\int_{t_{\text{start}}}^{t_{\text{end}}} |I(t)| \, dt}{C_{\text{nom}}}
 \end{equation}
 
-Because measured capacity varies with discharge rate and $T_{\text{amb}}$, reference points were filtered from $1\text{C}$ discharge cycles at $25^\circ\text{C}$. A Piecewise Cubic Hermite Interpolating Polynomial (PCHIP) was then fitted over the cycle indices to establish SoH trajectories for each MCU (Fig. \ref{fig:soh_trajectories}).
+Because measured capacity varies with discharge rate and $T_{\text{amb}}$, reference points were filtered from $1\text{C}$ discharge cycles at $25^\circ\text{C}$. A a 4th degree polynomial was then fitted over the cycle indices to establish SoH trajectories for each MCU (Fig. \ref{fig:soh_trajectories}). Reference-only SoH ranges and cycle counts are found in Table \ref{tab:mcu_soh_summary}.
 
 \begin{figure}[H]
 	\centerline{\includegraphics[width=\columnwidth]{soh_trajectories.pdf}}
 	\caption{Fitted SoH trajectories for all eight MCUs across their full discharge cycle histories.}
 	\label{fig:soh_trajectories}
 \end{figure}
+
+\input{mcu_soh_summary.tex}
 
 \subsection{Statistics}
 Global dataset statistics are computed across all $N = \sum N_i$ time steps using the pre-aggregated file metadata ($N_i$, $\mu_i$, $M_{2,i}$) for normalization:
@@ -204,5 +206,19 @@ $R^2$ is negative for Initial ($-0.94$) and Post-Aging ($-1.16$), an artifact of
 \input{temp_results.tex}
 
 The estimator performs consistently at both ends of the SoH spectrum within each temperature band. For example, $-20^{\circ}\text{C}$ spans $74.0$--$96.4\%$ at $R^2 = 0.93$ and $40^{\circ}\text{C}$ spans $75.6$--$97.4\%$ at $R^2 = 0.95$, indicating degradation capture is independent of temperature scale. The $25^{\circ}\text{C}$ band holds the most cycles ($236$) and widest SoH coverage, yielding the lowest $R^2$ ($0.85$) from greater target variance. The validation MCU's SoH trajectory with predicted points is shown in Fig. \ref{fig:val_trajectory}.
+
+\begin{figure}[H]
+	\centerline{\includegraphics[width=\columnwidth]{val_trajectory.pdf}}
+	\caption{Validation MCU (MCU3) SoH trajectory with predicted SoH points.}
+	\label{fig:val_trajectory}
+\end{figure}
+
+\begin{figure}[H]
+	\centerline{\includegraphics[width=\columnwidth]{pfi_importance.pdf}}
+	\caption{PFI importance over the input features ($V$, $I$, $T$, $T_{amb}$).}
+	\label{fig:pfi_importance}
+\end{figure}
+
+\input{pfi_results.tex}
 
 \end{document}

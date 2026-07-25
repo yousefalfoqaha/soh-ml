@@ -79,4 +79,3 @@ class EstimatorDataset(torch.utils.data.Dataset):
         y = torch.tensor([soh_standardized], dtype=torch.float32)
 
         return X, conditions, y
-

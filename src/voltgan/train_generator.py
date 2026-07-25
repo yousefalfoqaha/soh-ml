@@ -27,7 +27,7 @@ from voltgan.config import (
     TRAINING_MCUS,
     VALIDATION_MCUS,
 )
-from voltgan.data import BucketSampler, DischargeDataset, Standardizer
+from voltgan.data import BucketSampler, DischargeDataset, StatisticsCalculator
 from voltgan.models import Critic, Generator
 from voltgan.utils.discover import filter_by_temperature, load_instances
 
@@ -91,9 +91,9 @@ def main():
     )
     print(f"Validation instances (0C only): {len(val_instances)}")
 
-    standardizer = Standardizer(GENERATOR_STATS_PATH)
-    stats = standardizer.compute(train_instances)
-    standardizer.save()
+    statistics = StatisticsCalculator(GENERATOR_STATS_PATH)
+    stats = statistics.compute(train_instances)
+    statistics.save()
 
     training_dataset = DischargeDataset(instances=train_instances, stats=stats)
     validation_dataset = DischargeDataset(instances=val_instances, stats=stats)

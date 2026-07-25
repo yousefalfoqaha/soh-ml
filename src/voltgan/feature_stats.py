@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 
 from voltgan.config import HDF_ROOT, PROJECT_ROOT
-from voltgan.data import Standardizer
+from voltgan.data import StatisticsCalculator
 from voltgan.utils.discover import load_instances
 
 _ALL_MCUS = [f"mcu{i}" for i in range(1, 9)]
@@ -37,8 +37,8 @@ def main() -> None:
     instances = load_instances(HDF_ROOT, args.mcus)
     print(f"Loaded {len(instances)} instances from {args.mcus}")
 
-    standardizer = Standardizer(PROJECT_ROOT / "stats.json")
-    stats = standardizer.compute(instances)
+    statistics = StatisticsCalculator(save_path=None)
+    stats = statistics.compute(instances)
 
     lines = [
         r"\begin{table}[htbp]",
@@ -74,4 +74,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

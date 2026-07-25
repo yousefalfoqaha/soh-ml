@@ -43,7 +43,7 @@ class ExtractDischargePeriodsHandler(PipelineHandler):
         has_signal = discharge_exists or has_pulse_channel
 
         if not has_charge_channel and not has_signal:
-            context.metadata["instances"] = [(-np.inf, np.inf)]
+            context.metadata["instances"] = [(-np.inf, np.inf, "WLTC")]
 
             return context
 
@@ -68,12 +68,18 @@ class ExtractDischargePeriodsHandler(PipelineHandler):
     ):
         instances = []
         for window_start, window_end in windows:
-            discharge_pair = self._discharge_pair_in_window(
-                window_start, window_end, discharge_start, discharge_end
-            )
+            mask = (discharge_start >= window_start) & (discharge_start < window_end)
+            n_discharges = int(np.sum(mask))
 
-            if discharge_pair is not None:
-                instances.append(discharge_pair)
+            if n_discharges > 0:
+                protocol = "Constant" if n_discharges == 1 else "HPPC"
+                instances.append(
+                    (
+                        float(discharge_start[mask].min()),
+                        float(discharge_end[mask].max()),
+                        protocol,
+                    )
+                )
                 continue
 
             if has_pulse_channel:
@@ -82,18 +88,9 @@ class ExtractDischargePeriodsHandler(PipelineHandler):
                 )
 
                 if pulse_pair is not None:
-                    instances.append(pulse_pair)
+                    instances.append((pulse_pair[0], pulse_pair[1], "Pulse"))
 
         return instances
-
-    def _discharge_pair_in_window(
-        self, window_start, window_end, discharge_start, discharge_end
-    ):
-        mask = (discharge_start >= window_start) & (discharge_start < window_end)
-        if not np.any(mask):
-            return None
-
-        return (discharge_start[mask].min(), discharge_end[mask].max())
 
     def _pulse_pair_in_window(self, window_start, window_end, pulse_signal):
         pulse_timestamps = pulse_signal.timestamps

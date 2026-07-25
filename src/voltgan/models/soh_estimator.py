@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+from voltgan.config import LEAKY_SLOPE
+
 
 class SohEstimator(nn.Module):
     def __init__(
@@ -26,7 +28,7 @@ class SohEstimator(nn.Module):
                 stride=1,
                 padding=(kernel_size - 1) // 2,
             ),
-            nn.GELU(),
+            nn.LeakyReLU(LEAKY_SLOPE),
             self._block(
                 base_channels, 2 * base_channels, kernel_size, stride, padding, dropout
             ),
@@ -54,15 +56,26 @@ class SohEstimator(nn.Module):
             bidirectional=True,
         )
 
+        gru_out_dim = gru_hidden_size * 2
+
+        self.attn = nn.Sequential(
+            nn.Linear(gru_out_dim, gru_hidden_size),
+            nn.Tanh(),
+            nn.Linear(gru_hidden_size, 1),
+        )
+
         self.dropout = nn.Dropout(dropout)
 
-        self.output = nn.Linear(gru_hidden_size * 2, 1)
+        self.output = nn.Linear(gru_out_dim, 1)
 
     def _block(self, in_channels, out_channels, kernel_size, stride, padding, dropout):
+        channels_per_group = 16
+        num_groups = out_channels // channels_per_group
+
         return nn.Sequential(
             nn.Conv1d(in_channels, out_channels, kernel_size, stride, padding),
-            nn.GroupNorm(1, out_channels),
-            nn.GELU(),
+            nn.GroupNorm(num_groups, out_channels),
+            nn.LeakyReLU(LEAKY_SLOPE),
             nn.Dropout(dropout),
         )
 
@@ -75,9 +88,11 @@ class SohEstimator(nn.Module):
         shift = self.cond_shift(conditions).unsqueeze(1)
         x = self.film_dropout(x * (1.0 + scale) + shift)
 
-        _, h_n = self.gru(x)
+        gru_out, _ = self.gru(x)
 
-        pooled = torch.cat([h_n[-2], h_n[-1]], dim=1)
+        attn_scores = self.attn(gru_out)
+        attn_weights = torch.softmax(attn_scores, dim=1)
+        pooled = (gru_out * attn_weights).sum(dim=1)
         pooled = self.dropout(pooled)
 
         return self.output(pooled)

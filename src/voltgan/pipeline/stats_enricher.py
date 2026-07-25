@@ -9,7 +9,7 @@ from voltgan.pipeline.base import PipelineHandler, SampleContext
 class StatsEnrichHandler(PipelineHandler):
     @property
     def order(self) -> int:
-        return 5
+        return 6
 
     def handle(self, context: SampleContext) -> SampleContext:
         instances = context.metadata.get("instances")

@@ -3,6 +3,7 @@ from voltgan.pipeline.base import Pipeline, PipelineHandler, SampleContext
 from voltgan.pipeline.channel_validation import ChannelValidationHandler
 from voltgan.pipeline.extract_discharge_periods import ExtractDischargePeriodsHandler
 from voltgan.pipeline.hdf_converter import HdfConvertHandler
+from voltgan.pipeline.short_sequence_filter import ShortSequenceFilterHandler
 from voltgan.pipeline.soh import SohHandler
 from voltgan.pipeline.soh_curve import fit_soh_curves
 from voltgan.pipeline.stats_enricher import StatsEnrichHandler

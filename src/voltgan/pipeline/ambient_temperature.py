@@ -19,7 +19,7 @@ class AmbientTemperatureHandler(PipelineHandler):
         timestamps = signal.timestamps.astype(np.float32)
 
         instances_with_temperature = []
-        for start_t, end_t, soh, mean_neg_current in instances:
+        for start_t, end_t, protocol, soh, mean_neg_current in instances:
             mask = (timestamps >= start_t) & (timestamps <= end_t)
             masked = samples[mask]
 
@@ -29,7 +29,7 @@ class AmbientTemperatureHandler(PipelineHandler):
                 value = float("nan")
 
             instances_with_temperature.append(
-                (start_t, end_t, soh, mean_neg_current, value)
+                (start_t, end_t, protocol, soh, mean_neg_current, value)
             )
 
         context.metadata["instances"] = instances_with_temperature

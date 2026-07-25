@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import json
 from collections import defaultdict
-from datetime import datetime
 
 import numpy as np
 import torch
@@ -21,16 +20,13 @@ from voltgan.config import (
     ESTIMATOR_N_CONDITIONS,
     ESTIMATOR_STRIDE,
     HDF_ROOT,
+    PHASE_ORDER,
     PROJECT_ROOT,
     STATS_PATH,
 )
 from voltgan.data import EstimatorDataset
 from voltgan.models import SohEstimator
 from voltgan.utils.discover import load_instances
-
-_AGING_START = datetime(2025, 2, 12)
-_AGING_END = datetime(2025, 3, 8)
-_PHASE_ORDER = ["Initial", "Aging", "Post-Aging"]
 
 
 def _parse_args() -> argparse.Namespace:
@@ -102,14 +98,7 @@ def main() -> None:
             continue
         mean_pred = float(np.mean(preds))
         actual = inst.soh
-        dt = inst.datetime
-        phase = (
-            "Initial"
-            if dt < _AGING_START
-            else "Aging"
-            if dt <= _AGING_END
-            else "Post-Aging"
-        )
+        phase = inst.phase
         temp_center = int(round(inst.ambient_temperature / 5) * 5)
         results.append(
             {
@@ -198,7 +187,7 @@ def main() -> None:
 
     phase_rows = [
         _row(phase, _metrics(phase_groups[phase]))
-        for phase in _PHASE_ORDER
+        for phase in PHASE_ORDER
         if phase_groups.get(phase)
     ]
     _write_table(
@@ -225,4 +214,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

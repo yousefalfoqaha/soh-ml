@@ -16,8 +16,9 @@ from voltgan.config import (
     REFERENCE_CURRENT_RANGE,
     REFERENCE_TEMPERATURE_RANGE,
 )
-from voltgan.pipeline.soh_curve import fit_soh_curve, select_reference_points
+from voltgan.pipeline.soh_curve import fit_soh_curve
 from voltgan.utils.discover import discover
+from voltgan.utils.reference import select_reference_points
 
 
 def _load_records(
@@ -64,24 +65,14 @@ def _plot_trajectories(
             print(f"  {mcu}: only {len(ref_points)} ref point(s), skipping curve")
             continue
 
-        curve, first_dci, last_dci, first_soh, last_soh = fit
+        model, first_dci, last_dci, first_soh, last_soh = fit
 
         all_dci = np.array([r[0] for r in records], dtype=float)
         min_dci = float(all_dci.min())
         max_dci = float(all_dci.max())
 
         dense_dci = np.linspace(min_dci, max_dci, 500)
-        dense_soh = np.full_like(dense_dci, np.nan)
-
-        for j, t in enumerate(dense_dci):
-            if t <= first_dci:
-                dense_soh[j] = first_soh
-            elif t >= last_dci:
-                dense_soh[j] = last_soh
-            else:
-                dense_soh[j] = float(curve(float(t)))
-
-        dense_soh = np.clip(dense_soh, 0.0, 1.0)
+        dense_soh = np.clip([model(float(t)) for t in dense_dci], 0.0, 1.0)
 
         ax.plot(
             dense_dci,
@@ -139,4 +130,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

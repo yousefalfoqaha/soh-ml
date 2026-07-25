@@ -175,8 +175,5 @@ pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
 
-dataset/
-dataset-offline/
-plots/
-model.pt
+checkpoints/
 conference/build/

@@ -1,6 +1,7 @@
 from voltgan.config import (
     CHANNELS,
     DATA_PATH,
+    MIN_SEQUENCE_LENGTH,
     NOMINAL_CAPACITY,
     RASTER_FREQUENCY,
     REFERENCE_CURRENT_RANGE,
@@ -10,12 +11,13 @@ from voltgan.config import (
     TRAINING_MCUS,
     VALIDATION_MCUS,
 )
-from voltgan.data import Standardizer
+from voltgan.data import StatisticsCalculator
 from voltgan.pipeline import (
     ChannelValidationHandler,
     ExtractDischargePeriodsHandler,
     HdfConvertHandler,
     Pipeline,
+    ShortSequenceFilterHandler,
     SohHandler,
     StatsEnrichHandler,
 )
@@ -29,6 +31,7 @@ _PIPELINE_HANDLERS = [
     SohHandler(nominal_capacity=NOMINAL_CAPACITY),
     AmbientTemperatureHandler(),
     HdfConvertHandler(DATA_PATH, RASTER_FREQUENCY),
+    ShortSequenceFilterHandler(MIN_SEQUENCE_LENGTH),
     StatsEnrichHandler(),
 ]
 
@@ -48,9 +51,9 @@ def main():
     )
 
     instances = load_instances(DATA_PATH / "hdf", TRAINING_MCUS)
-    standardizer = Standardizer(STATS_PATH)
-    standardizer.compute(instances)
-    standardizer.save()
+    statistics = StatisticsCalculator(STATS_PATH)
+    statistics.compute(instances)
+    statistics.save()
 
     print("Preprocessing complete.")
 

@@ -23,13 +23,19 @@ class DischargeInstance:
             soh_file = f.attrs.get("curve_soh")
             ambient_temperature = f.attrs.get("ambient_temperature")
             datetime_str = f.attrs.get("datetime")
+            protocol = f.attrs.get("protocol")
+            phase = f.attrs.get("phase")
             assert isinstance(soh_file, (float, np.floating))
             assert isinstance(ambient_temperature, (float, np.floating))
             assert isinstance(datetime_str, str)
+            assert isinstance(protocol, str)
+            assert isinstance(phase, str)
 
             self.soh = float(soh_file)
             self.ambient_temperature = float(ambient_temperature)
             self.datetime = datetime.fromisoformat(datetime_str)
+            self.protocol = protocol
+            self.phase = phase
 
     def _load(self) -> np.ndarray:
         with h5py.File(self.filepath, "r") as f:

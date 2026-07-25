@@ -23,7 +23,7 @@ class SohHandler(PipelineHandler):
         current_timestamps = current_signal.timestamps.astype(np.float32)
 
         result_instances = []
-        for start_t, end_t in instances:
+        for start_t, end_t, protocol in instances:
             cur_mask = (current_timestamps >= start_t) & (
                 current_timestamps <= end_t
             )
@@ -44,7 +44,7 @@ class SohHandler(PipelineHandler):
             else:
                 mean_neg_current = 0.0
 
-            result_instances.append((start_t, end_t, soh, mean_neg_current))
+            result_instances.append((start_t, end_t, protocol, soh, mean_neg_current))
 
         context.metadata["instances"] = result_instances
         return context

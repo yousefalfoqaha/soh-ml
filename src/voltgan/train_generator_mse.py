@@ -25,7 +25,7 @@ from voltgan.config import (
     TRAINING_MCUS,
     VALIDATION_MCUS,
 )
-from voltgan.data import BucketSampler, DischargeDataset, Standardizer
+from voltgan.data import BucketSampler, DischargeDataset, StatisticsCalculator
 from voltgan.models import Generator
 from voltgan.utils.discover import load_instances
 
@@ -83,7 +83,7 @@ def main():
     val_instances = load_instances(HDF_ROOT, VALIDATION_MCUS)
     print(f"Validation instances: {len(val_instances)}")
 
-    standardizer = Standardizer(GENERATOR_STATS_PATH)
+    standardizer = StatisticsCalculator(GENERATOR_STATS_PATH)
     stats = standardizer.compute(train_instances)
     standardizer.save()
 
