@@ -204,22 +204,30 @@ The dataset was sliced into 1500-timestep windows (\textasciitilde15 min) with s
 	\end{center}
 \end{table}
 
-\subsection{Baseline Results and Discussion}
-Evaluation was performed on the validation and testing sets across SoH ranges (Table \ref{tab:baseline_results}) and across temperature bands and discharge protocols (Table \ref{tab:temp_protocol_results}).
+\subsection{Results and Discussion}
+Evaluation was performed on the validation and testing MCUs across phases (Table \ref{tab:baseline_results}) and across temperature bands and discharge protocols (Table \ref{tab:temp_protocol_results}).
 
 \input{baseline_results.tex}
 
-$R^2$ is negative for Initial ($-0.94$) and Post-Aging ($-1.16$), an artifact of their narrow SoH windows ($92.5$--$97.4\%$ and $74.0$--$82.5\%$). With little target variance, $R^2$ amplifies residual error and is uninformative, so RMSE and \%Err are the meaningful metrics. Initial achieves $1.4\%$ error (RMSE $0.018$). Aging is the strongest phase ($R^2 = 0.86$, $1.3\%$ error, RMSE $0.015$): its single $1$C constant discharge shape gives a consistent waveform the CNN/BiGRU exploits while still tracking declining SoH across discharges. Post-Aging error rises to $3.9\%$ (RMSE $0.039$) because the MCUs' SoH trajectories diverge after accelerated aging, producing a sparser distribution less represented in training. Overall, $R^2 = 0.88$ and $1.7\%$ error span $74.0$--$97.4\%$ SoH.
+$R^2$ is negative for Initial ($-0.71$), an artifact of its narrow SoH range ($91.8$--$96.2\%$): with little target variance, $R^2$ amplifies residual error and becomes uninformative, so RMSE and \%Err are the meaningful metrics here. Most overall metrics derive from the aging phase, which achieves low error, likely due to limited variance in discharge protocol (1C discharge at 25\textdegree C). Initial reaches $1.2\%$ error (RMSE $0.016$). Aging is the strongest phase ($R^2 = 0.89$, $1.2\%$ error, RMSE $0.013$): its constant 1C discharge yields a consistent waveform the CNN/BiGRU exploits, while still tracking declining SoH across discharges. Notably, Initial and Aging achieve similar metrics despite Initial having far fewer cycles and greater protocol/temperature variance, suggesting the model generalizes well across both phases. Post-Aging error rises to $3.8\%$ (RMSE $0.034$), likely because MCU SoH trajectories diverge after accelerated aging (Fig.~\ref{fig:soh_trajectories}), producing a sparser, less-represented distribution in training. Overall, $R^2 = 0.020$ and $1.8\%$ error across $62.8$--$96.2\%$ SoH.
 
 \input{temp_protocol_results.tex}
 
-The estimator performs consistently at both ends of the SoH spectrum within each temperature band. For example, $-20^{\circ}\text{C}$ spans $74.0$--$96.4\%$ at $R^2 = 0.93$ and $40^{\circ}\text{C}$ spans $75.6$--$97.4\%$ at $R^2 = 0.95$, indicating degradation capture is independent of temperature scale. The $25^{\circ}\text{C}$ band holds the most cycles ($236$) and widest SoH coverage, yielding the lowest $R^2$ ($0.85$) from greater target variance. The validation MCU's SoH trajectory with predicted points is shown in Fig. \ref{fig:val_trajectory}.
+The estimator generalizes more effectively at higher temperatures than at colder ones. The $40^{\circ}\text{C}$ band achieves the highest fit among temperature slices ($R^2 = 0.96$, $1.9\%$ error), while $-20^{\circ}\text{C}$ trails slightly ($R^2 = 0.94$, $2.7\%$ error) and $-10^{\circ}\text{C}$ shows the lowest fit among the higher-cycle bands ($R^2 = 0.86$, $4.3\%$ error). Notably, $-20^{\circ}\text{C}$ is $45^{\circ}\text{C}$ from the $25^{\circ}\text{C}$ baseline, versus $15^{\circ}\text{C}$ for $40^{\circ}\text{C}$, so its $R^2 = 0.94$ reflects generalization across a larger temperature shift than the $40^{\circ}\text{C}$ result.
+
+Within each temperature band, the estimator performs consistently across the SoH spectrum rather than favoring one end. $-20^{\circ}\text{C}$ spans $68.1$--$93.7\%$ at $R^2 = 0.94$ and $40^{\circ}\text{C}$ spans $66.8$--$95.1\%$ at $R^2 = 0.96$, so degradation capture holds across the full SoH range within a given temperature, not only at its extremes.
+
+Across discharge protocols, the model generalizes well, with each protocol spanning multiple temperature bands (Table~\ref{tab:phase_soh_summary}). Constant and HPPC achieve the highest fits ($R^2 = 0.92$ and $0.99$), and Pulse follows ($R^2 = 0.95$). WLTC has an $R^2$ of -0.11, but this reflects $3$ cycles restricted to the Initial phase, giving a narrow SoH band ($92.1$--$95.3\%$) (Table~\ref{tab:phase_soh_summary}). The protocols acheive consistent fits at different temperature band, so discharge protocol is not a major driver of estimator error.
+
+The validation MCU's SoH trajectory with predicted points is shown in Fig.~\ref{fig:val_trajectory}.
 
 \begin{figure}[H]
 	\centerline{\includegraphics[width=\columnwidth]{val_trajectory.pdf}}
-	\caption{Validation MCU (MCU3) SoH trajectory with predicted SoH points.}
+	\caption{Validation MCU SoH trajectory with predicted SoH points.}
 	\label{fig:val_trajectory}
 \end{figure}
+
+\subsection{Permutation Feature Importance (PFI)}
 
 \begin{figure}[H]
 	\centerline{\includegraphics[width=\columnwidth]{pfi_importance.pdf}}
