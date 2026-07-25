@@ -15,7 +15,7 @@
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 
 % training loop diagram
-% justify 3rd degree polynomial (maybe show rmse for 4th and 2nd)
+% justify 3rd degree polynomial
 % model architecture diagram
 % discharge protocol distribution/temperature??
 % oxford validation
@@ -190,14 +190,14 @@ The dataset was sliced into 1500-timestep windows (\textasciitilde15 min) with s
 			\hline
 			\textbf{Hyperparameter} & \textbf{Value} \\
 			\hline
-			Conv. base channels     & $32$           \\
+			Conv. base channels     & $64$           \\
 			Conv. kernel size       & $7$            \\
 			Conv. stride            & $2$            \\
 			GRU hidden size         & $128$          \\
 			GRU layers              & $2$            \\
 			Dropout                 & $0.1$          \\
 			Batch size              & $512$          \\
-			Epochs                  & $500$          \\
+			Epochs                  & $150$          \\
 			Learning rate           & $0.0005$       \\
 			\hline
 		\end{tabular}
@@ -239,7 +239,7 @@ Shuffling across the entire dataset ignores that each discharge protocol constra
 
 \begin{figure}[H]
 	\centerline{\includegraphics[width=\columnwidth]{pfi_importance.pdf}}
-	\caption{PFI results over the input features ($V$, $I$, $T$, $T_{amb}$).}
+	\caption{PFI results over $V$, $I$, $T$, $T_{amb}$.}
 	\label{fig:pfi_importance}
 \end{figure}
 
