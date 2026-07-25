@@ -14,10 +14,9 @@
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 
-% training loop diagram
-% justify 3rd degree polynomial
-% model architecture diagram
 % discharge protocol distribution/temperature??
+% training loop diagram
+% model architecture diagram
 % oxford validation
 % intro + abstract
 % references
@@ -134,6 +133,8 @@ Raw SoH for each discharge instance was computed via Coulomb counting:
 
 Because measured capacity varies with discharge rate and $T_{\text{amb}}$, reference points were filtered from $1\text{C}$ discharge cycles at $25^\circ\text{C}$. A a 4th degree polynomial was then fitted over the cycle indices to establish SoH trajectories for each MCU (Fig. \ref{fig:soh_trajectories}). Reference-only SoH ranges and cycle counts are found in Table \ref{tab:mcu_soh_summary}.
 
+
+% dont make y axis go down to 0.0 soh
 \begin{figure}[H]
 	\centerline{\includegraphics[width=\columnwidth]{soh_trajectories.pdf}}
 	\caption{Fitted SoH trajectories for all eight MCUs across their full discharge cycle histories.}
@@ -182,6 +183,7 @@ where $\gamma$ and $\beta$ are learned affine parameters. The modulated features
 \subsection{Training Setup}
 The dataset was sliced into 1500-timestep windows (\textasciitilde15 min) with stride 500. The eight MCUs were split 5/1/1 into training, validation, and test sets. MCUs 3 and 8 were held out for validation and testing, respectively, as their SoH bounds fall within the training range, testing interpolation rather than extrapolation. All input sequences and conditions were normalized. Estimator hyperparameters are given in Table \ref{tab:estimator_hparams}.
 
+% explain lr scheduler 
 \begin{table}[H]
 	\caption{ESTIMATOR HYPERPARAMETERS}
 	\label{tab:estimator_hparams}
