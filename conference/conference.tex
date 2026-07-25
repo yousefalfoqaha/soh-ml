@@ -118,15 +118,15 @@ As per the dataset engineer's advice, voltage (V), current (A), temperature (T),
 The components of the pre-processing pipeline are as follows:
 
 \begin{enumerate}
-	\item \textbf{Extract discharge periods:} Using discharge start/end signals provided by the testing platform to filter only discharge periods.
-	\item \textbf{Hierarchical Data Format (HDF5):} Converting each discharge period away from MF4 to HDF5 allows for O(1) disk reads when loading the dataset, while also only taking primary channels (V, I, T, $T_{amb}$) to reduce memory usage.
-	\item \textbf{Static conditions metadata:} $T_{amb}$ is controlled by the test platform at a fixed value for each discharge period, thus an average value was taken and stored as an HDF5 attribute.
+	\item \textbf{Extract discharge instances:} Using discharge start/end signals provided by the testing platform to filter only discharge instances.
+	\item \textbf{Hierarchical Data Format (HDF5):} Converting each discharge instance away from MF4 to HDF5 allows for O(1) disk reads when loading the dataset, while also only taking primary channels (V, I, T, $T_{amb}$) to reduce memory usage.
+	\item \textbf{Static conditions metadata:} $T_{amb}$ is controlled by the test platform at a fixed value for each discharge instance, thus an average value was taken and stored as an HDF5 attribute.
 	\item \textbf{Statistics metadata:} Statistics (mean, $M_2$, bounds) are stored as HDF5 attributes for standardization.
-	\item \textbf{SoH metadata:} SoH is calculated for each discharge period and written to HDF5 attributes (detailed below in Section D).
+	\item \textbf{SoH metadata:} SoH is calculated for each discharge instance and written to HDF5 attributes (detailed below in Section D).
 \end{enumerate}
 
 \subsection{SoH Labeling}
-Raw SoH for each discharge period was computed via Coulomb counting:
+Raw SoH for each discharge instance was computed via Coulomb counting:
 
 \begin{equation}
 	\text{SoH}_{\text{raw}} = \frac{\int_{t_{\text{start}}}^{t_{\text{end}}} |I(t)| \, dt}{C_{\text{nom}}}
@@ -156,7 +156,7 @@ For scalar attributes, sample-wise mean and variance are calculated across all $
 \section{Methodology}
 
 \subsection{Problem Formulation}
-Given a sequence of $V$, $I$, and $T$ over a discharge period, conditioned on $T_{\text{amb}}$, an estimator function $f(\cdot)$ predicts the cell's $\text{SoH}$:
+Given a sequence of $V$, $I$, and $T$ over a discharge instance, conditioned on $T_{\text{amb}}$, an estimator function $f(\cdot)$ predicts the cell's $\text{SoH}$:
 
 \begin{equation}
 	\widehat{\text{SoH}} = f(V, I, T \mid T_{\text{amb}})
@@ -209,11 +209,11 @@ Evaluation was performed on the validation and testing MCUs across phases (Table
 
 \input{baseline_results.tex}
 
-$R^2$ is negative for Initial ($-0.71$), an artifact of its narrow SoH range ($91.8$--$96.2\%$): with little target variance, $R^2$ amplifies residual error and becomes uninformative, so RMSE and \%Err are the meaningful metrics here. Most overall metrics derive from the aging phase, which achieves low error, likely due to limited variance in discharge protocol (1C discharge at 25\textdegree C). Initial reaches $1.2\%$ error (RMSE $0.016$). Aging is the strongest phase ($R^2 = 0.89$, $1.2\%$ error, RMSE $0.013$): its constant 1C discharge yields a consistent waveform the CNN/BiGRU exploits, while still tracking declining SoH across discharges. Notably, Initial and Aging achieve similar metrics despite Initial having far fewer cycles and greater protocol/temperature variance, suggesting the model generalizes well across both phases. Post-Aging error rises to $3.8\%$ (RMSE $0.034$), likely because MCU SoH trajectories diverge after accelerated aging (Fig.~\ref{fig:soh_trajectories}), producing a sparser, less-represented distribution in training. Overall, $R^2 = 0.020$ and $1.8\%$ error across $62.8$--$96.2\%$ SoH.
+$R^2$ is negative for Initial ($-0.71$), an artifact of its narrow SoH range ($91.8$--$96.2\%$): with little target variance, $R^2$ amplifies residual error and becomes uninformative, so RMSE and \%Err are the meaningful metrics here. Most overall metrics derive from the aging phase, which achieves low error, likely due to limited variance in discharge protocol (1C discharge at 25\textdegree C). Initial reaches $1.2\%$ error (RMSE $0.016$). Aging is the strongest phase ($R^2 = 0.89$, $1.2\%$ error, RMSE $0.013$): its constant 1C discharge yields a consistent waveform the CNN/BiGRU exploits, while still tracking declining SoH across discharges. Notably, Initial and Aging achieve similar metrics despite Initial having far fewer cycles and greater protocol/temperature variance, suggesting the model generalizes well across both phases despise varying temperatures. Post-Aging error rises to $3.8\%$ (RMSE $0.034$), likely because MCU SoH trajectories diverge after accelerated aging (Fig.~\ref{fig:soh_trajectories}), producing a less-represented distribution in training. Overall, $R^2 = 0.020$ and $1.8\%$ error across $62.8$--$96.2\%$ SoH.
 
 \input{temp_protocol_results.tex}
 
-The estimator generalizes more effectively at higher temperatures than at colder ones. The $40^{\circ}\text{C}$ band achieves the highest fit among temperature slices ($R^2 = 0.96$, $1.9\%$ error), while $-20^{\circ}\text{C}$ trails slightly ($R^2 = 0.94$, $2.7\%$ error) and $-10^{\circ}\text{C}$ shows the lowest fit among the higher-cycle bands ($R^2 = 0.86$, $4.3\%$ error). Notably, $-20^{\circ}\text{C}$ is $45^{\circ}\text{C}$ from the $25^{\circ}\text{C}$ baseline, versus $15^{\circ}\text{C}$ for $40^{\circ}\text{C}$, so its $R^2 = 0.94$ reflects generalization across a larger temperature shift than the $40^{\circ}\text{C}$ result.
+The $40^{\circ}\text{C}$ band achieves the highest fit among temperature slices ($R^2 = 0.96$, $1.9\%$ error), while $-20^{\circ}\text{C}$ trails slightly ($R^2 = 0.94$, $2.7\%$ error) and $-10^{\circ}\text{C}$ shows the lowest fit among the higher-cycle bands ($R^2 = 0.86$, $4.3\%$ error). Notably, $-20^{\circ}\text{C}$ is $45^{\circ}\text{C}$ from the $25^{\circ}\text{C}$ baseline, versus $15^{\circ}\text{C}$ for $40^{\circ}\text{C}$, so its $R^2 = 0.94$ reflects generalization across a larger temperature shift than the $40^{\circ}\text{C}$ result.
 
 Within each temperature band, the estimator performs consistently across the SoH spectrum rather than favoring one end. $-20^{\circ}\text{C}$ spans $68.1$--$93.7\%$ at $R^2 = 0.94$ and $40^{\circ}\text{C}$ spans $66.8$--$95.1\%$ at $R^2 = 0.96$, so degradation capture holds across the full SoH range within a given temperature, not only at its extremes.
 
@@ -229,11 +229,23 @@ The validation MCU's SoH trajectory with predicted points is shown in Fig.~\ref{
 
 \subsection{Permutation Feature Importance (PFI)}
 
+PFI was used to measure which inputs the model relies on for its predictions. PFI shuffles one feature at a time and measures the resulting drop in performance.
+
+\begin{equation}
+	\Delta \text{RMSE} = \text{RMSE}_{\text{permuted}} - \text{RMSE}_{\text{baseline}}
+\end{equation}
+
+Shuffling across the entire dataset ignores that each discharge protocol constrains the plausible range of every signal. To preserve physically valid combinations, stratification shuffles each feature only within its own protocol. Results are reported per protocol in Table~\ref{tab:pfi_results} and plotted in Fig. \ref{fig:pfi_importance}.
+
 \begin{figure}[H]
 	\centerline{\includegraphics[width=\columnwidth]{pfi_importance.pdf}}
 	\caption{PFI importance over the input features ($V$, $I$, $T$, $T_{amb}$).}
 	\label{fig:pfi_importance}
 \end{figure}
+
+$I$ is consistently one of the most important features across protocols, despite being a controlled input rather than a measured response. $T_{amb}$ shows a similar pattern, ranking highly alongside $I$ in most protocols. This suggests the model uses the controlled inputs ($I$, $T_{amb}$) as reference points to interpret the measured outputs ($V$, $T$), rather than relying on the outputs alone. 
+
+$T$ contributes little across all protocols, with importance near zero or slightly negative. This is likely due to the low variance of temperature in any given 1500-timestep window compared to voltage, despite both being measured outputs.
 
 \input{pfi_results.tex}
 
