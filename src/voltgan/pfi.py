@@ -186,10 +186,10 @@ def main() -> None:
     print(f"Ran baseline inference ({overall_base['cycles']} instances)")
 
     feature_specs = [
-        ("Voltage", "X", (0,)),
-        ("Current", "X", (1,)),
-        ("Temperature", "X", (2,)),
-        ("Ambient Temp.", "cond", ()),
+        ("$V$", "X", (0,)),
+        ("$I$", "X", (1,)),
+        ("$T$", "X", (2,)),
+        ("$T_{amb}$", "cond", ()),
     ]
 
     pfi_grid: dict[str, dict[str, dict]] = {
@@ -284,11 +284,11 @@ def main() -> None:
 
     grid_lines = [
         r"\begin{table}[H]",
-        r"    \caption{Stratified Permutation Feature Importance for SoH Estimator}",
+        r"    \caption{Stratified PFI Results}",
         r"    \label{tab:pfi_results}",
         r"    \begin{center}",
         r"        \footnotesize",
-        r"        \begin{tabular}{@{}" + align_cols + r"@{}}",
+        r"        \begin{tabular}{align_cols}",
         r"            \hline",
         header_cols + r" \\",
         r"            \hline",
@@ -383,7 +383,7 @@ def main() -> None:
     ax.set_yticks(group_centers)
     ax.set_yticklabels(feature_labels)
     ax.set_xlabel(r"$\Delta$RMSE (Permuted within Protocol $-$ Baseline)")
-    ax.set_title("Stratified Permutation Feature Importance")
+    ax.set_title("Stratified PFI")
     ax.axvline(0, color="grey", linestyle="--", linewidth=0.8)
     ax.grid(True, axis="x", alpha=0.3)
     ax.legend(fontsize=9, loc="best", title="Protocol")

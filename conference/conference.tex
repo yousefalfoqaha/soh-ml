@@ -197,13 +197,13 @@ For baseline testing, the dataset was sliced into 2000 timestep windows (approx.
 \end{table}
 
 \subsection{Baseline Results and Discussion}
-Evaluation was performed on the validation and testing sets across SoH ranges (Table \ref{tab:baseline_results}) and temperature bands (Table \ref{tab:temp_results}).
+Evaluation was performed on the validation and testing sets across SoH ranges (Table \ref{tab:baseline_results}) and across temperature bands and discharge protocols (Table \ref{tab:temp_protocol_results}).
 
 \input{baseline_results.tex}
 
 $R^2$ is negative for Initial ($-0.94$) and Post-Aging ($-1.16$), an artifact of their narrow SoH windows ($92.5$--$97.4\%$ and $74.0$--$82.5\%$). With little target variance, $R^2$ amplifies residual error and is uninformative, so RMSE and \%Err are the meaningful metrics. Initial achieves $1.4\%$ error (RMSE $0.018$). Aging is the strongest phase ($R^2 = 0.86$, $1.3\%$ error, RMSE $0.015$): its single $1$C constant discharge shape gives a consistent waveform the CNN/BiGRU exploits while still tracking declining SoH across discharges. Post-Aging error rises to $3.9\%$ (RMSE $0.039$) because the MCUs' SoH trajectories diverge after accelerated aging, producing a sparser distribution less represented in training. Overall, $R^2 = 0.88$ and $1.7\%$ error span $74.0$--$97.4\%$ SoH.
 
-\input{temp_results.tex}
+\input{temp_protocol_results.tex}
 
 The estimator performs consistently at both ends of the SoH spectrum within each temperature band. For example, $-20^{\circ}\text{C}$ spans $74.0$--$96.4\%$ at $R^2 = 0.93$ and $40^{\circ}\text{C}$ spans $75.6$--$97.4\%$ at $R^2 = 0.95$, indicating degradation capture is independent of temperature scale. The $25^{\circ}\text{C}$ band holds the most cycles ($236$) and widest SoH coverage, yielding the lowest $R^2$ ($0.85$) from greater target variance. The validation MCU's SoH trajectory with predicted points is shown in Fig. \ref{fig:val_trajectory}.
 

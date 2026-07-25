@@ -28,6 +28,8 @@ from voltgan.data import EstimatorDataset
 from voltgan.models import SohEstimator
 from voltgan.utils.discover import load_instances
 
+_PROTOCOL_ORDER = ["Constant", "HPPC", "Pulse", "WLTC"]
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -99,10 +101,12 @@ def main() -> None:
         mean_pred = float(np.mean(preds))
         actual = inst.soh
         phase = inst.phase
+        protocol = inst.protocol
         temp_center = int(round(inst.ambient_temperature / 5) * 5)
         results.append(
             {
                 "phase": phase,
+                "protocol": protocol,
                 "temp_center": temp_center,
                 "actual_soh": actual,
                 "predicted_soh": mean_pred,
@@ -112,17 +116,21 @@ def main() -> None:
 
     phase_groups: dict[str, list[dict]] = defaultdict(list)
     temp_groups: dict[int, list[dict]] = defaultdict(list)
+    protocol_groups: dict[str, list[dict]] = defaultdict(list)
     for r in results:
         phase_groups[r["phase"]].append(r)
         temp_groups[r["temp_center"]].append(r)
+        protocol_groups[r["protocol"]].append(r)
 
     def _metrics(group: list[dict]) -> dict:
         actual = np.array([r["actual_soh"] for r in group])
         pred = np.array([r["predicted_soh"] for r in group])
         r2 = float(r2_score(actual, pred)) if len(group) >= 2 else None
+        temps = [r["temp_center"] for r in group]
         return {
             "cycles": len(group),
             "soh_range": f"${actual.min() * 100:.1f}$--${actual.max() * 100:.1f}$",
+            "temp_range": f"${min(temps)}$--${max(temps)}$",
             "rmse": float(np.sqrt(mean_squared_error(actual, pred))),
             "mae": float(mean_absolute_error(actual, pred)),
             "r2": r2,
@@ -166,7 +174,7 @@ def main() -> None:
             rf"    \label{{{label}}}",
             r"    \begin{center}",
             r"        \footnotesize",
-            r"        \begin{tabular}{@{}lcccccc@{}}",
+            r"        \begin{tabular}{lcccccc}",
             r"            \hline",
             rf"            \textbf{{{first_header}}} & \textbf{{SoH}} & \textbf{{RMSE}} & \textbf{{MAE}} & \textbf{{R\textsuperscript{{2}}}} & \textbf{{\%Err}} & \textbf{{Cycles}} \\",
             r"            \hline",
@@ -199,17 +207,47 @@ def main() -> None:
         overall_m,
     )
 
+    def _subheader(text: str) -> str:
+        return rf"\multicolumn{{7}}{{c}}{{\textbf{{{text}}}}}" + r" \\"
+
     temp_rows = [
-        _row(f"${tc}$", _metrics(temp_groups[tc])) for tc in sorted(temp_groups.keys())
+        _row(rf"${tc}^{{\circ}}\text{{C}}$", _metrics(temp_groups[tc]))
+        for tc in sorted(temp_groups.keys())
     ]
-    _write_table(
-        "temp_results",
-        "TEMPERATURE-BASED ESTIMATOR PERFORMANCE",
-        "tab:temp_results",
-        r"Temp. ($^{\circ}$C)",
-        temp_rows,
-        overall_m,
-    )
+    protocol_rows = [
+        _row(proto, _metrics(protocol_groups[proto]))
+        for proto in _PROTOCOL_ORDER
+        if protocol_groups.get(proto)
+    ]
+    combined_lines = [
+        r"\begin{table}[H]",
+        r"    \caption{ESTIMATOR PERFORMANCE BY TEMPERATURE AND PROTOCOL}",
+        r"    \label{tab:temp_protocol_results}",
+        r"    \begin{center}",
+        r"        \footnotesize",
+        r"        \begin{tabular}{lcccccc}",
+        r"            \hline",
+        (
+            r"            \textbf{Slice} & \textbf{SoH (\%)} & "
+            r"\textbf{RMSE} & \textbf{MAE} & \textbf{R\textsuperscript{2}} & "
+            r"\textbf{\%Err} & \textbf{Cycles} \\"
+        ),
+        r"            \hline",
+        _subheader("Temperature Bands"),
+        *temp_rows,
+        r"            \hline",
+        _subheader("Discharge Protocols"),
+        *protocol_rows,
+        r"            \hline",
+        _row("Overall", overall_m, bold=True),
+        r"            \hline",
+        r"        \end{tabular}",
+        r"    \end{center}",
+        r"\end{table}",
+    ]
+    combined_tex_path = PROJECT_ROOT / "conference" / "temp_protocol_results.tex"
+    combined_tex_path.write_text("\n".join(combined_lines) + "\n")
+    print(f"LaTeX table saved -> {combined_tex_path}")
 
 
 if __name__ == "__main__":
