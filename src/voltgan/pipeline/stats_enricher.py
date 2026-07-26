@@ -3,6 +3,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
+from voltgan.config import AMBIENT_TEMPERATURE_KEY
 from voltgan.pipeline.base import PipelineHandler, SampleContext
 
 
@@ -48,7 +49,7 @@ class StatsEnrichHandler(PipelineHandler):
                 f.attrs[f"{channel}_max"] = float(np.max(data))
 
             f.attrs["total_rows"] = total_rows
-            f.attrs["ambient_temperature_mean"] = f.attrs["ambient_temperature"]
-            f.attrs["ambient_temperature_m2"] = 0.0
-            f.attrs["ambient_temperature_min"] = f.attrs["ambient_temperature"]
-            f.attrs["ambient_temperature_max"] = f.attrs["ambient_temperature"]
+            f.attrs[f"{AMBIENT_TEMPERATURE_KEY}_mean"] = f.attrs[AMBIENT_TEMPERATURE_KEY]
+            f.attrs[f"{AMBIENT_TEMPERATURE_KEY}_m2"] = 0.0
+            f.attrs[f"{AMBIENT_TEMPERATURE_KEY}_min"] = f.attrs[AMBIENT_TEMPERATURE_KEY]
+            f.attrs[f"{AMBIENT_TEMPERATURE_KEY}_max"] = f.attrs[AMBIENT_TEMPERATURE_KEY]

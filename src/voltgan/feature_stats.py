@@ -2,19 +2,28 @@ from __future__ import annotations
 
 import argparse
 
-from voltgan.config import HDF_ROOT, PROJECT_ROOT
+from voltgan.config import (
+    AMBIENT_TEMPERATURE_KEY,
+    CURRENT_CHANNEL,
+    HDF_ROOT,
+    PROJECT_ROOT,
+    SOH_KEY,
+    TEMP_DELTA_KEY,
+    TEMPERATURE_CHANNEL,
+    VOLTAGE_CHANNEL,
+)
 from voltgan.data import StatisticsCalculator
 from voltgan.utils.discover import load_instances
 
 _ALL_MCUS = [f"mcu{i}" for i in range(1, 9)]
 
 _FEATURE_ORDER = [
-    ("U", r"Voltage ($V$)"),
-    ("I", r"Current ($I$)"),
-    ("Temp[1]", r"Cell Temperature ($T$)"),
-    ("ambient_temperature", r"Ambient Temperature ($T_{\text{amb}}$)"),
-    ("temp_delta", r"Thermal Delta ($\Delta T_{\text{cell}}$)"),
-    ("soh", r"State of Health ($\text{SoH}$)"),
+    (VOLTAGE_CHANNEL, r"Voltage ($V$)"),
+    (CURRENT_CHANNEL, r"Current ($I$)"),
+    (TEMPERATURE_CHANNEL, r"Cell Temperature ($T$)"),
+    (AMBIENT_TEMPERATURE_KEY, r"Ambient Temperature ($T_{\text{amb}}$)"),
+    (TEMP_DELTA_KEY, r"Thermal Delta ($\Delta T_{\text{cell}}$)"),
+    (SOH_KEY, r"State of Health ($\text{SoH}$)"),
 ]
 
 

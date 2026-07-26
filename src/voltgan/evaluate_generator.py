@@ -15,9 +15,11 @@ import torch.nn.functional as F
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 from voltgan.config import (
+    AMBIENT_TEMPERATURE_KEY,
     CONV_BASE_CHANNELS,
     CONV_HIDDEN_LAYERS,
     CONV_KERNEL_SIZE,
+    CURRENT_CHANNEL,
     DROPOUT,
     GENERATOR_CHECKPOINT_PATH,
     GENERATOR_STATS_PATH,
@@ -26,6 +28,9 @@ from voltgan.config import (
     N_CONDITIONS_GAN,
     NOISE_DIM,
     PLOTS_PATH,
+    SOH_KEY,
+    TEMP_DELTA_KEY,
+    VOLTAGE_CHANNEL,
 )
 from voltgan.data.instance import DischargeInstance
 from voltgan.models import Generator
@@ -125,24 +130,24 @@ def _evaluate_mcu(
         instance = DischargeInstance(hdf_path)
         raw = instance.data
 
-        current_std = _standardize(raw[:, 1], stats["I"])
-        voltage_std = _standardize(raw[:, 0], stats["U"])
+        current_std = _standardize(raw[:, 1], stats[CURRENT_CHANNEL])
+        voltage_std = _standardize(raw[:, 0], stats[VOLTAGE_CHANNEL])
         thermal_rise = raw[:, 2] - instance.ambient_temperature
-        temp_delta_std = _standardize(thermal_rise, stats["temp_delta"])
+        temp_delta_std = _standardize(thermal_rise, stats[TEMP_DELTA_KEY])
         ambient_std = float(
-            _standardize(instance.ambient_temperature, stats["ambient_temperature"])
+            _standardize(instance.ambient_temperature, stats[AMBIENT_TEMPERATURE_KEY])
         )
-        soh_std = float(_standardize(instance.soh, stats["soh"]))
+        soh_std = float(_standardize(instance.soh, stats[SOH_KEY]))
         conditions_std = np.array([[soh_std, ambient_std]], dtype=np.float32)
 
         voltage_pred_std, temp_delta_pred_std = _run_inference(
             model, current_std, conditions_std, device
         )
 
-        voltage_true = _destandardize(voltage_std, stats["U"])
-        voltage_pred = _destandardize(voltage_pred_std, stats["U"])
+        voltage_true = _destandardize(voltage_std, stats[VOLTAGE_CHANNEL])
+        voltage_pred = _destandardize(voltage_pred_std, stats[VOLTAGE_CHANNEL])
         temp_true = raw[:, 2]
-        temp_delta_pred = _destandardize(temp_delta_pred_std, stats["temp_delta"])
+        temp_delta_pred = _destandardize(temp_delta_pred_std, stats[TEMP_DELTA_KEY])
         temp_pred = temp_delta_pred + instance.ambient_temperature
 
         u_rmse = float(np.sqrt(mean_squared_error(voltage_true, voltage_pred)))

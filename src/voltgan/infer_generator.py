@@ -8,9 +8,11 @@ import h5py
 import matplotlib
 
 from voltgan.config import (
+    AMBIENT_TEMPERATURE_KEY,
     CONV_BASE_CHANNELS,
     CONV_HIDDEN_LAYERS,
     CONV_KERNEL_SIZE,
+    CURRENT_CHANNEL,
     GENERATOR_CHECKPOINT_PATH,
     GENERATOR_STATS_PATH,
     HDF_ROOT,
@@ -18,6 +20,10 @@ from voltgan.config import (
     N_CONDITIONS_GAN,
     NOISE_DIM,
     PLOTS_PATH,
+    SOH_KEY,
+    TEMP_DELTA_KEY,
+    TEMPERATURE_CHANNEL,
+    VOLTAGE_CHANNEL,
 )
 from voltgan.models import Generator
 
@@ -40,12 +46,12 @@ def _read_hdf(
             assert isinstance(dataset, h5py.Dataset)
             return dataset[:]
 
-        current = _load("I")
-        voltage = _load("U")
-        temperature = _load("Temp[1]")
+        current = _load(CURRENT_CHANNEL)
+        voltage = _load(VOLTAGE_CHANNEL)
+        temperature = _load(TEMPERATURE_CHANNEL)
 
         soh = float(f.attrs.get("curve_soh", 1.0))
-        ambient_temperature = float(f.attrs.get("ambient_temperature", 25.0))
+        ambient_temperature = float(f.attrs.get(AMBIENT_TEMPERATURE_KEY, 25.0))
 
     return (
         current,
@@ -125,14 +131,14 @@ def _plot(
     soh_condition: float,
     ambient_condition: float,
 ) -> None:
-    voltage_true = _destandardize(y_true[:, 0], stats["U"])
+    voltage_true = _destandardize(y_true[:, 0], stats[VOLTAGE_CHANNEL])
     temperature_true = (
-        _destandardize(y_true[:, 1], stats["temp_delta"]) + ambient_temperature
+        _destandardize(y_true[:, 1], stats[TEMP_DELTA_KEY]) + ambient_temperature
     )
 
-    voltage_prediction = _destandardize(y_prediction[:, 0], stats["U"])
+    voltage_prediction = _destandardize(y_prediction[:, 0], stats[VOLTAGE_CHANNEL])
     temperature_prediction = (
-        _destandardize(y_prediction[:, 1], stats["temp_delta"]) + ambient_condition
+        _destandardize(y_prediction[:, 1], stats[TEMP_DELTA_KEY]) + ambient_condition
     )
 
     timesteps = np.arange(len(y_true))
@@ -244,10 +250,10 @@ def main() -> None:
         stats = json.load(f)
     print(f"Stats loaded from {GENERATOR_STATS_PATH}")
 
-    current_std = _standardize(current, stats["I"])
-    voltage_std = _standardize(voltage, stats["U"])
+    current_std = _standardize(current, stats[CURRENT_CHANNEL])
+    voltage_std = _standardize(voltage, stats[VOLTAGE_CHANNEL])
     thermal_rise = temperature - ambient_temperature
-    temp_delta_std = _standardize(thermal_rise, stats["temp_delta"])
+    temp_delta_std = _standardize(thermal_rise, stats[TEMP_DELTA_KEY])
 
     y_true_std = np.stack([voltage_std, temp_delta_std], axis=1).astype(np.float32)
 
@@ -260,10 +266,10 @@ def main() -> None:
         else ambient_temperature
     )
 
-    amb_std = (ambient_condition - stats["ambient_temperature"]["mean"]) / stats[
-        "ambient_temperature"
+    amb_std = (ambient_condition - stats[AMBIENT_TEMPERATURE_KEY]["mean"]) / stats[
+        AMBIENT_TEMPERATURE_KEY
     ]["standard_deviation"]
-    soh_std = (soh_condition - stats["soh"]["mean"]) / stats["soh"][
+    soh_std = (soh_condition - stats[SOH_KEY]["mean"]) / stats[SOH_KEY][
         "standard_deviation"
     ]
     conditions_std = np.array([[soh_std, amb_std]], dtype=np.float32)

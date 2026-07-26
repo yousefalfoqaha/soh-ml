@@ -23,9 +23,10 @@ from voltgan.config import (
     ESTIMATOR_KERNEL_SIZE,
     ESTIMATOR_N_CONDITIONS,
     ESTIMATOR_STRIDE,
+    SOH_KEY,
+    STATS_PATH,
     HDF_ROOT,
     RANDOM_SEED,
-    STATS_PATH,
 )
 from voltgan.data import EstimatorDataset
 from voltgan.models import SohEstimator
@@ -94,8 +95,8 @@ def _run_inference(
     stats: dict,
     device: str,
 ) -> np.ndarray:
-    soh_mean = stats["soh"]["mean"]
-    soh_std = stats["soh"]["standard_deviation"]
+    soh_mean = stats[SOH_KEY]["mean"]
+    soh_std = stats[SOH_KEY]["standard_deviation"]
     all_preds = []
     for i in range(0, len(X), BATCH_SIZE):
         batch_X = X[i : i + BATCH_SIZE].to(device)

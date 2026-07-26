@@ -11,6 +11,8 @@ import numpy as np
 import torch
 
 from voltgan.config import (
+    AMBIENT_TEMPERATURE_KEY,
+    CURRENT_CHANNEL,
     ESTIMATOR_BASE_CHANNELS,
     ESTIMATOR_CHECKPOINT_PATH,
     ESTIMATOR_GRU_HIDDEN_SIZE,
@@ -20,7 +22,10 @@ from voltgan.config import (
     ESTIMATOR_N_CONDITIONS,
     ESTIMATOR_STRIDE,
     HDF_ROOT,
+    SOH_KEY,
     STATS_PATH,
+    TEMP_DELTA_KEY,
+    VOLTAGE_CHANNEL,
     WINDOW_SIZE,
 )
 from voltgan.data import DischargeInstance
@@ -127,14 +132,14 @@ def main() -> None:
         stats = json.load(f)
     print(f"Stats loaded from {STATS_PATH}")
 
-    # instance.data is (seq_len, 3) as [U, I, Temp[1]]
+    # instance.data is (seq_len, 3) as [VOLTAGE_CHANNEL, CURRENT_CHANNEL, TEMPERATURE_CHANNEL]
     raw = instance.data
-    voltage_std = _standardize(raw[:, 0], stats["U"])
-    current_std = _standardize(raw[:, 1], stats["I"])
+    voltage_std = _standardize(raw[:, 0], stats[VOLTAGE_CHANNEL])
+    current_std = _standardize(raw[:, 1], stats[CURRENT_CHANNEL])
     thermal_rise = raw[:, 2] - instance.ambient_temperature
-    temperature_std = _standardize(thermal_rise, stats["temp_delta"])
+    temperature_std = _standardize(thermal_rise, stats[TEMP_DELTA_KEY])
     ambient_temperature = _standardize(
-        instance.ambient_temperature, stats["ambient_temperature"]
+        instance.ambient_temperature, stats[AMBIENT_TEMPERATURE_KEY]
     )
 
     x_std = np.stack([voltage_std, current_std, temperature_std], axis=1).astype(
@@ -160,7 +165,7 @@ def main() -> None:
 
     predicted_soh_per_window_std = run_inference(model, windows, conditions_std, device)
     predicted_soh_per_window = _destandardize(
-        predicted_soh_per_window_std, stats["soh"]
+        predicted_soh_per_window_std, stats[SOH_KEY]
     )
 
     actual_soh = float(instance.soh)

@@ -4,6 +4,12 @@ from pathlib import Path
 import h5py
 import numpy as np
 
+from voltgan.config import (
+    AMBIENT_TEMPERATURE_KEY,
+    SOH_KEY,
+    TEMP_DELTA_KEY,
+    TEMPERATURE_CHANNEL,
+)
 from voltgan.data.instance import DischargeInstance
 from voltgan.utils.box_table import print_box_table
 
@@ -20,7 +26,6 @@ class StatisticsCalculator:
         total_rows = 0
 
         soh_values: list[float] = []
-        temp_rises: list[float] = []
 
         for instance in instances:
             with h5py.File(instance.filepath, "r") as f:
@@ -36,7 +41,7 @@ class StatisticsCalculator:
                         continue
                     if isinstance(group[key], h5py.Dataset):
                         keys_to_process.append(key)
-                keys_to_process.append("ambient_temperature")
+                keys_to_process.append(AMBIENT_TEMPERATURE_KEY)
 
                 for key in keys_to_process:
                     mean = float(f.attrs.get(f"{key}_mean", 0.0))
@@ -51,9 +56,17 @@ class StatisticsCalculator:
                 if soh_file is not None:
                     soh_values.append(float(soh_file))
 
-                temp_min = float(f.attrs.get("Temp[1]_min", 0.0))
-                temp_max = float(f.attrs.get("Temp[1]_max", 0.0))
-                temp_rises.append(temp_max - temp_min)
+                key = TEMP_DELTA_KEY
+                if key not in channel_stats:
+                    channel_stats[key] = {"sum": 0.0, "m2_sum": 0.0, "sum_sq": 0.0}
+                tr_file_mean = float(f.attrs[f"{TEMPERATURE_CHANNEL}_mean"]) - float(
+                    f.attrs[AMBIENT_TEMPERATURE_KEY]
+                )
+                channel_stats[key]["sum"] += tr_file_mean * n_rows
+                channel_stats[key]["sum_sq"] += tr_file_mean * tr_file_mean * n_rows
+                channel_stats[key]["m2_sum"] += float(
+                    f.attrs.get(f"{TEMPERATURE_CHANNEL}_m2", 0.0)
+                )
 
         if total_rows == 0:
             raise ValueError("No data points found.")
@@ -76,15 +89,9 @@ class StatisticsCalculator:
         soh_array = np.asarray(soh_values, dtype=np.float64)
         soh_mean = float(soh_array.mean())
         soh_std = float(np.sqrt(max(soh_array.var(), 1e-8)))
-        result["soh"] = {
+        result[SOH_KEY] = {
             "mean": soh_mean,
             "standard_deviation": soh_std,
-        }
-
-        temp_rise_array = np.asarray(temp_rises, dtype=np.float64)
-        result["temp_delta"] = {
-            "mean": float(temp_rise_array.mean()),
-            "standard_deviation": float(np.sqrt(max(temp_rise_array.var(), 1e-8))),
         }
 
         self._print_stats(result, total_rows)

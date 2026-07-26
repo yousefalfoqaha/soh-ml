@@ -20,9 +20,9 @@ def _usage():
     print("  pfi               Run permutation feature importance on the estimator")
     print("  inspect           Inspect structure and contents of an HDF file")
     print("  plot-soh-trajectories  Plot SoH trajectories across all MCUs")
-    print(
-        "  plot-val-trajectory    Plot validation MCU SoH trajectory with predictions"
-    )
+    print("  plot-val-trajectory    Plot validation MCU SoH trajectory with predictions")
+    print("  pre-oxford        Preprocess Oxford .mat into HDF files + compute stats")
+    print("  evaluate-estimator-oxford  Evaluate SoH estimator on Oxford dataset (zero-shot)")
     sys.exit(1)
 
 
@@ -54,6 +54,10 @@ match command:
         main()
     case "evaluate-estimator":
         from voltgan.evaluate_estimator import main
+
+        main()
+    case "evaluate-estimator-oxford":
+        from voltgan.evaluate_estimator_oxford import main
 
         main()
     case "evaluate-generator":
@@ -98,6 +102,10 @@ match command:
         main()
     case "plot-val-trajectory":
         from voltgan.plot_val_trajectory import main
+
+        main()
+    case "pre-oxford":
+        from voltgan.oxford import main
 
         main()
     case _:

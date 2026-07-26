@@ -9,7 +9,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from voltgan.config import CONFERENCE_PATH
+from voltgan.config import CONFERENCE_PATH, CURRENT_CHANNEL
 
 _PROTOCOLS = [
     ("Constant", "ChDch2 2024-10-22_05.31.47 Pulse_Test_SamsungINR2170050E_Cell 5 Zelltester_1.hdf"),
@@ -37,7 +37,7 @@ def main() -> None:
 
         with h5py.File(path, "r") as f:
             group = f[filename]
-            current = group["I"][:]
+            current = group[CURRENT_CHANNEL][:]
 
         if name == "Pulse":
             current = current[:_MAX_PULSE_STEPS]

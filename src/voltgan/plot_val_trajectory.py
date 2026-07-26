@@ -25,6 +25,7 @@ from voltgan.config import (
     ESTIMATOR_N_CONDITIONS,
     ESTIMATOR_STRIDE,
     HDF_ROOT,
+    SOH_KEY,
     STATS_PATH,
     VALIDATION_MCUS,
 )
@@ -60,8 +61,8 @@ def _run_inference(mcus: list[str], stats: dict, device: str):
             all_preds.append(preds.cpu().numpy())
     all_preds = np.concatenate(all_preds)
 
-    soh_mean = stats["soh"]["mean"]
-    soh_std = stats["soh"]["standard_deviation"]
+    soh_mean = stats[SOH_KEY]["mean"]
+    soh_std = stats[SOH_KEY]["standard_deviation"]
     preds_destd = all_preds * soh_std + soh_mean
 
     instance_preds: dict[int, list[float]] = defaultdict(list)

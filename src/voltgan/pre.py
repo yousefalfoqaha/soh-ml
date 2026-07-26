@@ -1,6 +1,6 @@
 from voltgan.config import (
     CHANNELS,
-    DATA_PATH,
+    DATASET_PATH,
     MIN_SEQUENCE_LENGTH,
     NOMINAL_CAPACITY,
     RASTER_FREQUENCY,
@@ -30,7 +30,7 @@ _PIPELINE_HANDLERS = [
     ExtractDischargePeriodsHandler(),
     SohHandler(nominal_capacity=NOMINAL_CAPACITY),
     AmbientTemperatureHandler(),
-    HdfConvertHandler(DATA_PATH, RASTER_FREQUENCY),
+    HdfConvertHandler(DATASET_PATH, RASTER_FREQUENCY),
     ShortSequenceFilterHandler(MIN_SEQUENCE_LENGTH),
     StatsEnrichHandler(),
 ]
@@ -39,18 +39,18 @@ _PIPELINE_HANDLERS = [
 def main():
     print("Starting data preprocessing pipeline...")
 
-    pipeline = Pipeline(DATA_PATH, _PIPELINE_HANDLERS)
+    pipeline = Pipeline(DATASET_PATH, _PIPELINE_HANDLERS)
     pipeline.run(TRAINING_MCUS + VALIDATION_MCUS + TESTING_MCUS)
 
     print("Fitting SoH curves...")
     fit_soh_curves(
-        hdf_root=DATA_PATH / "hdf",
+        hdf_root=DATASET_PATH / "hdf",
         mcus=TRAINING_MCUS + VALIDATION_MCUS + TESTING_MCUS,
         ref_temp_range=REFERENCE_TEMPERATURE_RANGE,
         ref_current_range=REFERENCE_CURRENT_RANGE,
     )
 
-    instances = load_instances(DATA_PATH / "hdf", TRAINING_MCUS)
+    instances = load_instances(DATASET_PATH / "hdf", TRAINING_MCUS)
     statistics = StatisticsCalculator(STATS_PATH)
     statistics.compute(instances)
     statistics.save()

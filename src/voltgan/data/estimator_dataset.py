@@ -1,7 +1,14 @@
 import numpy as np
 import torch
 
-from voltgan.config import WINDOW_SIZE
+from voltgan.config import (
+    AMBIENT_TEMPERATURE_KEY,
+    CURRENT_CHANNEL,
+    SOH_KEY,
+    TEMP_DELTA_KEY,
+    VOLTAGE_CHANNEL,
+    WINDOW_SIZE,
+)
 from voltgan.data.instance import DischargeInstance
 
 
@@ -13,25 +20,25 @@ class EstimatorDataset(torch.utils.data.Dataset):
     ):
         self._means = np.array(
             [
-                stats["U"]["mean"],
-                stats["I"]["mean"],
-                stats["ambient_temperature"]["mean"],
-                stats["soh"]["mean"],
+                stats[VOLTAGE_CHANNEL]["mean"],
+                stats[CURRENT_CHANNEL]["mean"],
+                stats[AMBIENT_TEMPERATURE_KEY]["mean"],
+                stats[SOH_KEY]["mean"],
             ],
             dtype=np.float32,
         )
         self._standard_deviations = np.array(
             [
-                stats["U"]["standard_deviation"],
-                stats["I"]["standard_deviation"],
-                stats["ambient_temperature"]["standard_deviation"],
-                stats["soh"]["standard_deviation"],
+                stats[VOLTAGE_CHANNEL]["standard_deviation"],
+                stats[CURRENT_CHANNEL]["standard_deviation"],
+                stats[AMBIENT_TEMPERATURE_KEY]["standard_deviation"],
+                stats[SOH_KEY]["standard_deviation"],
             ],
             dtype=np.float32,
         )
 
-        self._temp_delta_mean = stats["temp_delta"]["mean"]
-        self._temp_delta_std = stats["temp_delta"]["standard_deviation"]
+        self._temp_delta_mean = stats[TEMP_DELTA_KEY]["mean"]
+        self._temp_delta_std = stats[TEMP_DELTA_KEY]["standard_deviation"]
 
         self.windows = []
         stride = 500

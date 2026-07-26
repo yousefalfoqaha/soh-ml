@@ -36,3 +36,9 @@ def filter_by_temperature(
         return [i for i in instances if not (lo <= i.ambient_temperature <= hi)]
     return [i for i in instances if lo <= i.ambient_temperature <= hi]
 
+
+def filter_by_split(
+    instances: list[DischargeInstance],
+    split: str,
+) -> list[DischargeInstance]:
+    return [i for i in instances if i.split == split]

@@ -14,11 +14,12 @@
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 
-% discharge protocol distribution/temperature??
+% discharge protocol distribution/temperature (with soh ranges) replace in table 1
 % training loop diagram
-% model architecture diagram
+% maybe data pipeline diagram
+% actual model architecture diagram instead of placeholder
 % oxford validation
-% intro + abstract
+% intro + abstract + related works
 % references
 
 \begin{document}
@@ -134,7 +135,6 @@ Raw SoH for each discharge instance was computed via Coulomb counting:
 Because measured capacity varies with discharge rate and $T_{\text{amb}}$, reference points were filtered from $1\text{C}$ discharge cycles at $25^\circ\text{C}$. A 4th degree polynomial was then fitted over the cycle indices to establish SoH trajectories for each MCU (Fig. \ref{fig:soh_trajectories}). Reference-only SoH ranges and cycle counts are found in Table \ref{tab:mcu_soh_summary}.
 
 
-% dont make y axis go down to 0.0 soh
 \begin{figure}[H]
 	\centerline{\includegraphics[width=\columnwidth]{soh_trajectories.pdf}}
 	\caption{Fitted SoH trajectories for all eight MCUs across their full discharge cycle histories.}
@@ -183,7 +183,7 @@ where $\gamma$ and $\beta$ are learned affine parameters. The modulated features
 \subsection{Training Setup}
 The dataset was sliced into 1500-timestep windows (\textasciitilde15 min) with stride 500. The eight MCUs were split 6/1/1 into training, validation, and test sets. MCUs 3 and 8 were held out for validation and testing, respectively, as their SoH bounds fall within the training range, testing interpolation rather than extrapolation. All input sequences and conditions were normalized. Estimator hyperparameters are given in Table \ref{tab:estimator_hparams}.
 
-% explain lr scheduler 
+% explain lr scheduler
 \begin{table}[H]
 	\caption{ESTIMATOR HYPERPARAMETERS}
 	\label{tab:estimator_hparams}
@@ -250,7 +250,8 @@ Shuffling across the entire dataset ignores that each discharge protocol constra
 	\label{fig:pfi_importance}
 \end{figure}
 
-$I$ is consistently the most important feature across protocols. $V$ and $T_{amb}$ trade off in importance depending on protocol. $T_{amb}$ and $T$ show an inverse relationship with protocol dynamics: under Constant discharge, $T_{amb}$ is the least important feature ($+0.0045$), below even $T$ ($+0.0084$), while under HPPC and Pulse, $T_{amb}$ rises ($+0.1383$, $+0.1563$) as $T$ drops to near zero or negative. This suggests that under stable current, the model draws more on the cell's own temperature response than on the fixed ambient condition, whereas under highly dynamic current profiles, the model shifts toward $T_{amb}$.
+$I$ and $T_{amb}$ are consistently the most important features across protocols. $V$ is also an important feature across all protocols. $T_{amb}$ and $T$ show an interesting relationship with protocol dynamics: under Constant discharge, both features are utilized ($+0.0130$), while under HPPC and Pulse, $T_{amb}$ rises ($+0.1383$, $+0.1563$) as $T$ drops to near zero or negative. This is likely due to stable currents allowing $T$ to accumulate larger deltas, which is a more useful signal compared to the fixed ambient condition, whereas under highly dynamic current profiles, the cells can dissipate accumulated heat, so the model only has $T_{amb}$ as a proxy for temperature.
 
+\input{oxford_results.tex}
 
 \end{document}

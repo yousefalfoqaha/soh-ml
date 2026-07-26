@@ -1,5 +1,6 @@
 import numpy as np
 
+from voltgan.config import CURRENT_CHANNEL
 from voltgan.pipeline.base import PipelineHandler, SampleContext
 
 
@@ -18,7 +19,7 @@ class SohHandler(PipelineHandler):
 
         mdf = context.mdf
 
-        current_signal = mdf.get("I")
+        current_signal = mdf.get(CURRENT_CHANNEL)
         current_samples = current_signal.samples.astype(np.float32)
         current_timestamps = current_signal.timestamps.astype(np.float32)
 

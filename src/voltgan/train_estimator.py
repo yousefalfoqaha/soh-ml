@@ -108,7 +108,12 @@ def main():
 
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", patience=10, factor=0.1
+        optimizer,
+        mode="min",
+        patience=15,
+        factor=0.5,
+        cooldown=2,
+        min_lr=1e-6,
     )
 
     train_and_validate(

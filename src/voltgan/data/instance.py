@@ -5,7 +5,12 @@ from typing import cast
 import h5py
 import numpy as np
 
-from voltgan.config import MAX_SEQUENCE_LENGTH
+from voltgan.config import (
+    CURRENT_CHANNEL,
+    MAX_SEQUENCE_LENGTH,
+    TEMPERATURE_CHANNEL,
+    VOLTAGE_CHANNEL,
+)
 
 
 class DischargeInstance:
@@ -16,7 +21,7 @@ class DischargeInstance:
         with h5py.File(filepath, "r") as f:
             group = f[filepath.name]
             assert isinstance(group, h5py.Group)
-            signal = cast(h5py.Dataset, group["U"])
+            signal = cast(h5py.Dataset, group[VOLTAGE_CHANNEL])
 
             self.n_samples = len(signal)
 
@@ -25,6 +30,7 @@ class DischargeInstance:
             datetime_str = f.attrs.get("datetime")
             protocol = f.attrs.get("protocol")
             phase = f.attrs.get("phase")
+            split = f.attrs.get("split")
             assert isinstance(soh_file, (float, np.floating))
             assert isinstance(ambient_temperature, (float, np.floating))
             assert isinstance(datetime_str, str)
@@ -36,6 +42,7 @@ class DischargeInstance:
             self.datetime = datetime.fromisoformat(datetime_str)
             self.protocol = protocol
             self.phase = phase
+            self.split = split if isinstance(split, str) else None
 
     def _load(self) -> np.ndarray:
         with h5py.File(self.filepath, "r") as f:
@@ -44,9 +51,9 @@ class DischargeInstance:
 
             data = np.stack(
                 [
-                    cast(h5py.Dataset, group["U"])[:],
-                    cast(h5py.Dataset, group["I"])[:],
-                    cast(h5py.Dataset, group["Temp[1]"])[:],
+                    cast(h5py.Dataset, group[VOLTAGE_CHANNEL])[:],
+                    cast(h5py.Dataset, group[CURRENT_CHANNEL])[:],
+                    cast(h5py.Dataset, group[TEMPERATURE_CHANNEL])[:],
                 ]
             ).T.astype(np.float32)
 
