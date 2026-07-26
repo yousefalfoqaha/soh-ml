@@ -48,6 +48,7 @@ def _plot_trajectories(
     colors = plt.get_cmap("tab10")
 
     fig, ax = plt.subplots(figsize=(14, 7), layout="constrained")
+    traj_mins: list[float] = []
 
     for i, mcu in enumerate(mcus):
         records = per_mcu[mcu]
@@ -83,10 +84,9 @@ def _plot_trajectories(
             label=f"{mcu} ({len(records)} files)",
         )
 
-    all_soHs = [
-        r[1] for records in per_mcu.values() for r in records if not np.isnan(r[1])
-    ]
-    y_min = min(all_soHs) if all_soHs else 0.0
+        traj_mins.append(float(np.min(dense_soh)))
+
+    y_min = min(traj_mins) if traj_mins else 0.0
     y_max = 1.05
     padding = (y_max - y_min) * 0.05
     ax.set_ylim(y_min - padding, y_max)
