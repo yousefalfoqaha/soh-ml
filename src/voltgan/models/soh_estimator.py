@@ -1,7 +1,18 @@
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 
-from voltgan.config import LEAKY_SLOPE
+from voltgan.config import (
+    ESTIMATOR_BASE_CHANNELS,
+    ESTIMATOR_GRU_HIDDEN_SIZE,
+    ESTIMATOR_GRU_N_LAYERS,
+    ESTIMATOR_INPUT_FEATURES,
+    ESTIMATOR_KERNEL_SIZE,
+    ESTIMATOR_N_CONDITIONS,
+    ESTIMATOR_STRIDE,
+    LEAKY_SLOPE,
+)
 
 
 class SohEstimator(nn.Module):
@@ -65,7 +76,6 @@ class SohEstimator(nn.Module):
         )
 
         self.dropout = nn.Dropout(dropout)
-
         self.output = nn.Linear(gru_out_dim, 1)
 
     def _block(self, in_channels, out_channels, kernel_size, stride, padding, dropout):
@@ -96,3 +106,43 @@ class SohEstimator(nn.Module):
         pooled = self.dropout(pooled)
 
         return self.output(pooled)
+
+
+class SohEstimatorClient:
+    def __init__(
+        self,
+        device: str,
+        checkpoint_path: Path | None = None,
+        is_training: bool = False,
+    ):
+        self.device = device
+
+        self.model = SohEstimator(
+            input_features=ESTIMATOR_INPUT_FEATURES,
+            n_conditions=ESTIMATOR_N_CONDITIONS,
+            base_channels=ESTIMATOR_BASE_CHANNELS,
+            stride=ESTIMATOR_STRIDE,
+            kernel_size=ESTIMATOR_KERNEL_SIZE,
+            gru_hidden_size=ESTIMATOR_GRU_HIDDEN_SIZE,
+            gru_n_layers=ESTIMATOR_GRU_N_LAYERS,
+            dropout=0.1 if is_training else 0.0,
+        ).to(self.device)
+
+        if checkpoint_path and checkpoint_path.exists():
+            self.model.load_state_dict(
+                torch.load(checkpoint_path, map_location=self.device, weights_only=True)
+            )
+
+        if is_training:
+            self.model.train()
+        else:
+            self.model.eval()
+
+    def train(self):
+        self.model.train()
+
+    def eval(self):
+        self.model.eval()
+
+    def __call__(self, X: torch.Tensor, conditions: torch.Tensor) -> torch.Tensor:
+        return self.model(X, conditions)

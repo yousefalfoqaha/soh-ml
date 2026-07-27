@@ -40,10 +40,12 @@ LEAVE_OUT_TEMPERATURE_RANGE = (-2.0, 2.0)
 TRAINING_MCUS = ["mcu1", "mcu2", "mcu7", "mcu4", "mcu5", "mcu6"]
 VALIDATION_MCUS = ["mcu3"]
 TESTING_MCUS = ["mcu8"]
+ALL_MCUS = TRAINING_MCUS + VALIDATION_MCUS + TESTING_MCUS
 
 AGING_START = datetime(2025, 2, 12)
 AGING_END = datetime(2025, 3, 8)
 PHASE_ORDER = ["Initial", "Aging", "Post-Aging"]
+PROTOCOL_ORDER = ["Constant", "HPPC", "Pulse", "WLTC"]
 
 CONV_HIDDEN_LAYERS = 3
 CONV_BASE_CHANNELS = 32
@@ -82,3 +84,12 @@ OXFORD_PROTOCOL = "Constant"
 OXFORD_PHASE = PHASE_ORDER[1]
 OXFORD_FINE_TUNE_FRACTION = 0.15
 OXFORD_BASE_DATETIME = datetime(2015, 1, 8)
+
+FEATURE_DISPLAY_NAMES = {
+    VOLTAGE_CHANNEL: r"Voltage ($V$)",
+    CURRENT_CHANNEL: r"Current ($I$)",
+    TEMPERATURE_CHANNEL: r"Cell Temperature ($T$)",
+    AMBIENT_TEMPERATURE_KEY: r"Ambient Temperature ($T_{\text{amb}}$)",
+    TEMP_DELTA_KEY: r"Thermal Delta ($\Delta T_{\text{cell}}$)",
+    SOH_KEY: r"State of Health ($\text{SoH}$)",
+}

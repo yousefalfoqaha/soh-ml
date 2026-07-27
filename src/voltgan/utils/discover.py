@@ -1,44 +1,31 @@
+import re
+from datetime import datetime
 from pathlib import Path
-from typing import Generator
 
-from voltgan.data.instance import DischargeInstance
-
-
-def discover(
-    root: Path, mcus: list[str], extensions: tuple[str, ...]
-) -> Generator[Path, None, None]:
-    for mcu in mcus:
-        mcu_path = root / mcu
-        if not mcu_path.exists():
-            print(f"Source directory missing, skipping MCU: {mcu_path}")
-            continue
-
-        for path in sorted(mcu_path.rglob("*")):
-            if path.is_file() and path.suffix.lower() in extensions:
-                yield path
+_DATETIME_PATTERN = re.compile(r"(\d{4}-\d{2}-\d{2})[_ ](\d{2}\.\d{2}\.\d{2})")
 
 
-def load_instances(
-    root: Path,
-    mcus: list[str],
-    extensions: tuple[str, ...] = (".hdf",),
-) -> list[DischargeInstance]:
-    return [DischargeInstance(p) for p in discover(root, mcus, extensions)]
+class FileDiscoverer:
+    @staticmethod
+    def find(root_dir: Path, subdirs: list[str], exts: tuple[str, ...]) -> list[Path]:
+        paths = []
+        for subdir in subdirs:
+            target = root_dir / subdir
+            if target.exists():
+                paths.extend(
+                    [
+                        p
+                        for p in target.rglob("*")
+                        if p.is_file() and p.suffix.lower() in exts
+                    ]
+                )
+        return paths
 
-
-def filter_by_temperature(
-    instances: list[DischargeInstance],
-    temp_range: tuple[float, float],
-    exclude: bool = False,
-) -> list[DischargeInstance]:
-    lo, hi = temp_range
-    if exclude:
-        return [i for i in instances if not (lo <= i.ambient_temperature <= hi)]
-    return [i for i in instances if lo <= i.ambient_temperature <= hi]
-
-
-def filter_by_split(
-    instances: list[DischargeInstance],
-    split: str,
-) -> list[DischargeInstance]:
-    return [i for i in instances if i.split == split]
+    @staticmethod
+    def sort_wuppertal(path: Path) -> datetime:
+        m = _DATETIME_PATTERN.search(path.name)
+        if not m:
+            raise ValueError(f"Cannot parse date-time from filename: {path.name}")
+        return datetime.strptime(
+            f"{m.group(1)} {m.group(2).replace('.', ':')}", "%Y-%m-%d %H:%M:%S"
+        )

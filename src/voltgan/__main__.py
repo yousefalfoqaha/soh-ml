@@ -1,113 +1,48 @@
 import sys
 
+_VALID = {"ingest", "dataset", "evaluation", "train", "infer", "inspect"}
 
-def _usage():
-    print("Usage: python -m voltgan <command>")
-    print("Commands:")
-    print("  pre               Run preprocessing on dataset")
-    print("  refit-soh         Refit SoH curves on existing HDF files")
-    print("  refit-phase       Backfill the 'phase' attribute on existing HDF files")
-    print("  train-generator   Run generator model training")
-    print("  train-generator-mse  Run generator model training with MSE loss")
-    print("  train-estimator   Run SoH estimator model training")
-    print("  infer-generator   Run generator inference on an HDF file")
-    print("  infer-estimator   Run SoH estimator inference on an HDF file")
-    print("  evaluate-estimator  Evaluate SoH estimator across MCU files")
-    print("  evaluate-generator  Evaluate sequence generator across MCU files")
-    print("  mcu-summary       Generate MCU SoH range and cycle count table")
-    print("  feature-stats     Generate feature statistics LaTeX table")
-    print("  temp-distribution Generate temperature band distribution table")
-    print("  pfi               Run permutation feature importance on the estimator")
-    print("  inspect           Inspect structure and contents of an HDF file")
-    print("  plot-soh-trajectories  Plot SoH trajectories across all MCUs")
-    print("  plot-val-trajectory    Plot validation MCU SoH trajectory with predictions")
-    print("  pre-oxford        Preprocess Oxford .mat into HDF files + compute stats")
-    print("  evaluate-estimator-oxford  Evaluate SoH estimator on Oxford dataset (zero-shot)")
-    sys.exit(1)
+_USAGE = """\
+Usage: python -m voltgan <command>
+
+Commands:
+  ingest                      Run data ingestion pipeline (Wuppertal + Oxford)
+  dataset                     Generate dataset statistics tables and figures
+  evaluation                  Run estimator evaluation + PFI + Oxford tables/charts
+  train <estimator|generator|generator-mse>
+                              Train a model
+  infer generator <hdf-rel-path> [--soh=..] [--ambient=..]
+                              Run generator inference on an HDF file
+  inspect <hdf-rel-path>      Inspect structure and contents of an HDF file
+"""
 
 
-if len(sys.argv) < 2:
-    _usage()
+def _main() -> None:
+    if len(sys.argv) < 2 or sys.argv[1] not in _VALID:
+        print(_USAGE)
+        sys.exit(1 if (len(sys.argv) < 2 or sys.argv[1] not in _VALID) else 0)
 
-command = sys.argv.pop(1)
+    command = sys.argv.pop(1)
+    match command:
+        case "ingest":
+            from voltgan.cli.ingest import main as _main_fn
+        case "dataset":
+            from voltgan.cli.dataset import main as _main_fn
+        case "evaluation":
+            from voltgan.cli.evaluation import main as _main_fn
+        case "train":
+            from voltgan.cli.train import main as _main_fn
+        case "infer":
+            from voltgan.cli.infer import main as _main_fn
+        case "inspect":
+            from voltgan.cli.inspect import main as _main_fn
+        case _:
+            print(f"Unknown command: {command!r}")
+            sys.exit(1)
 
-match command:
-    case "train-generator":
-        from voltgan.train_generator import main
+    _main_fn()
 
-        main()
-    case "train-generator-mse":
-        from voltgan.train_generator_mse import main
 
-        main()
-    case "train-estimator":
-        from voltgan.train_estimator import main
+if __name__ == "__main__":
+    _main()
 
-        main()
-    case "infer-generator":
-        from voltgan.infer_generator import main
-
-        main()
-    case "infer-estimator":
-        from voltgan.infer_estimator import main
-
-        main()
-    case "evaluate-estimator":
-        from voltgan.evaluate_estimator import main
-
-        main()
-    case "evaluate-estimator-oxford":
-        from voltgan.evaluate_estimator_oxford import main
-
-        main()
-    case "evaluate-generator":
-        from voltgan.evaluate_generator import main
-
-        main()
-    case "mcu-summary":
-        from voltgan.mcu_soh_summary import main
-
-        main()
-    case "feature-stats":
-        from voltgan.feature_stats import main
-
-        main()
-    case "temp-distribution":
-        from voltgan.temp_distribution import main
-
-        main()
-    case "pre":
-        from voltgan.pre import main
-
-        main()
-    case "refit-soh":
-        from voltgan.refit_soh import main
-
-        main()
-    case "refit-phase":
-        from voltgan.refit_phase import main
-
-        main()
-    case "pfi":
-        from voltgan.pfi import main
-
-        main()
-    case "inspect":
-        from voltgan.inspect import main
-
-        main()
-    case "plot-soh-trajectories":
-        from voltgan.plot_soh_trajectories import main
-
-        main()
-    case "plot-val-trajectory":
-        from voltgan.plot_val_trajectory import main
-
-        main()
-    case "pre-oxford":
-        from voltgan.oxford import main
-
-        main()
-    case _:
-        print(f"Unknown command: {command!r}")
-        _usage()

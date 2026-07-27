@@ -1,7 +1,17 @@
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 
-from voltgan.config import LEAKY_SLOPE
+from voltgan.config import (
+    CONV_BASE_CHANNELS,
+    CONV_KERNEL_SIZE,
+    DROPOUT,
+    LATENT_SIZE,
+    LEAKY_SLOPE,
+    N_CONDITIONS_GAN,
+    NOISE_DIM,
+)
 
 
 class Generator(nn.Module):
@@ -91,3 +101,44 @@ class Generator(nn.Module):
         latent_input = self.encode(X, conditions, noise)
         latent_output, _ = self.gru(latent_input)
         return self.output(latent_output)
+
+
+class GeneratorClient:
+    def __init__(
+        self,
+        device: str,
+        checkpoint_path: Path | None = None,
+        is_training: bool = False,
+    ):
+        self.device = device
+
+        self.model = Generator(
+            input_features=1,
+            n_conditions=N_CONDITIONS_GAN,
+            base_channels=CONV_BASE_CHANNELS,
+            kernel_size=CONV_KERNEL_SIZE,
+            noise_dim=NOISE_DIM,
+            latent_size=LATENT_SIZE,
+            dropout=DROPOUT if is_training else 0.0,
+        ).to(self.device)
+
+        if checkpoint_path and checkpoint_path.exists():
+            self.model.load_state_dict(
+                torch.load(checkpoint_path, map_location=self.device, weights_only=True)
+            )
+
+        if is_training:
+            self.model.train()
+        else:
+            self.model.eval()
+
+    def train(self):
+        self.model.train()
+
+    def eval(self):
+        self.model.eval()
+
+    def __call__(
+        self, X: torch.Tensor, conditions: torch.Tensor, noise: torch.Tensor
+    ) -> torch.Tensor:
+        return self.model(X, conditions, noise)

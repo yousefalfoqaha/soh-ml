@@ -1,3 +1,11 @@
-from voltgan.models.critic import Critic
-from voltgan.models.generator import Generator
-from voltgan.models.soh_estimator import SohEstimator
+from .critic import Critic
+from .generator import Generator, GeneratorClient
+from .soh_estimator import SohEstimator, SohEstimatorClient
+
+__all__ = [
+    "Critic",
+    "Generator",
+    "GeneratorClient",
+    "SohEstimator",
+    "SohEstimatorClient",
+]
