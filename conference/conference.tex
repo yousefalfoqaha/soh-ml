@@ -19,7 +19,8 @@
 % maybe data pipeline diagram
 % actual model architecture diagram instead of placeholder
 % oxford validation
-% intro + abstract + related works
+% explain lr scheduler
+% intro + abstract + related works + conclusion
 % references
 
 \begin{document}
@@ -183,7 +184,6 @@ where $\gamma$ and $\beta$ are learned affine parameters. The modulated features
 \subsection{Training Setup}
 The dataset was sliced into 1500-timestep windows (\textasciitilde15 min) with stride 500. The eight MCUs were split 6/1/1 into training, validation, and test sets. MCUs 3 and 8 were held out for validation and testing, respectively, as their SoH bounds fall within the training range, testing interpolation rather than extrapolation. All input sequences and conditions were normalized. Estimator hyperparameters are given in Table \ref{tab:estimator_hparams}.
 
-% explain lr scheduler
 \begin{table}[H]
 	\caption{ESTIMATOR HYPERPARAMETERS}
 	\label{tab:estimator_hparams}
