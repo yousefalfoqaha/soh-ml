@@ -61,9 +61,6 @@ class OxfordIngestor(DatasetIngestor):
                         "curve_soh": soh,
                         "ambient_temperature": OXFORD_AMBIENT_TEMPERATURE,
                         "discharge_rate": 1.0,
-                        "mean_neg_current": float(np.mean(np.abs(i[i < 0])))
-                        if np.any(i < 0)
-                        else 0.0,
                         "datetime": (
                             OXFORD_BASE_DATETIME + timedelta(days=dci)
                         ).isoformat(),

@@ -72,7 +72,7 @@ class DatasetAnalyzer:
                 continue
 
             raw_records = [
-                (i.dci, i.soh, i.ambient_temperature, i.mean_neg_current) for i in insts
+                (i.dci, i.soh, i.ambient_temperature, i.discharge_rate) for i in insts
             ]
             ref_points = fitter.filter_reference(raw_records)
 

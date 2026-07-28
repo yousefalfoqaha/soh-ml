@@ -48,7 +48,7 @@ class StatisticsCalculator:
         for inst in instances:
             n_rows = inst.n_samples
             total_rows += n_rows
-            soh_values.append(inst.soh)
+            soh_values.append(inst.curve_soh)
 
             v = inst.voltage
             i = inst.current

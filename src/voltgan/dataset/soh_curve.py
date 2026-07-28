@@ -19,33 +19,40 @@ class CurveFitResult:
 class SohCurveFitter:
     def __init__(
         self,
-        ref_temp_range: tuple[float, float],
-        ref_current_range: tuple[float, float],
+        reference_temperature: float,
+        reference_discharge_rate: float,
     ):
-        self.ref_temp_range = ref_temp_range
-        self.ref_current_range = ref_current_range
+        self.reference_temperature = reference_temperature
+        self.reference_discharge_rate = reference_discharge_rate
+
+        self._reference_temperature_range = (
+            reference_temperature - 2.0,
+            reference_temperature + 2.0,
+        )
 
     @staticmethod
     def _poly4(x, a, b, c, d, e):
         return a + b * x + c * x**2 + d * x**3 + e * x**4
 
     def filter_reference(
-        self, records: list[tuple[float, float, float, float]]
+        self, records: list[tuple[float, float, float, float | None]]
     ) -> list[tuple[float, float]]:
-        """Return (dci, soh) pairs passing the temperature/current reference filter."""
-        t_lo, t_hi = self.ref_temp_range
-        c_lo, c_hi = self.ref_current_range
+        """Return (dci, soh) pairs passing the temperature and discharge rate filters."""
+        t_lo, t_hi = self._reference_temperature_range
         return [
             (r[0], r[1])
             for r in records
-            if not np.isnan(r[1]) and (t_lo <= r[2] <= t_hi) and (c_lo <= r[3] <= c_hi)
+            if not np.isnan(r[1])
+            and (t_lo <= r[2] <= t_hi)
+            and (r[3] is not None)
+            and abs(r[3] - self.reference_discharge_rate) < 0.15
         ]
 
     def fit(
-        self, records: list[tuple[float, float, float, float]]
+        self, records: list[tuple[float, float, float, float | None]]
     ) -> CurveFitResult | None:
         """
-        Expects records as (dci, soh, ambient_temperature, mean_neg_current).
+        Expects records as (dci, soh, ambient_temperature, discharge_rate).
         Returns a CurveFitResult if enough reference points are found.
         """
         ref_points = self.filter_reference(records)

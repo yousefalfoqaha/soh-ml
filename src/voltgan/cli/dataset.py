@@ -12,8 +12,8 @@ from voltgan.config import (
     CONFERENCE_PATH,
     FEATURE_DISPLAY_NAMES,
     PHASE_ORDER,
-    REFERENCE_CURRENT_RANGE,
-    REFERENCE_TEMPERATURE_RANGE,
+    REFERENCE_DISCHARGE_RATE,
+    REFERENCE_TEMPERATURE,
     TESTING_MCUS,
     TRAINING_MCUS,
     VALIDATION_MCUS,
@@ -101,8 +101,8 @@ def main() -> None:
 
     # mcu soh summary table
     fitter = SohCurveFitter(
-        ref_temp_range=REFERENCE_TEMPERATURE_RANGE,
-        ref_current_range=REFERENCE_CURRENT_RANGE,
+        reference_temperature=REFERENCE_TEMPERATURE,
+        reference_discharge_rate=REFERENCE_DISCHARGE_RATE,
     )
 
     mcu_summaries = DatasetAnalyzer.compute_mcu_summaries(instances, fitter)
@@ -125,7 +125,7 @@ def main() -> None:
                 instance.dci,
                 instance.soh,
                 instance.ambient_temperature,
-                instance.mean_neg_current,
+                instance.discharge_rate,
             )
         )
 

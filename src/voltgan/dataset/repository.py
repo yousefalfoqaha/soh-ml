@@ -48,6 +48,8 @@ class InstanceRepository:
 
                 d_rate = attrs.get("discharge_rate")
                 split = attrs.get("split")
+                c_soh = attrs.get("curve_soh")
+
                 volt_ds = cast(h5py.Dataset, group[VOLTAGE_CHANNEL])
 
                 inst = DischargeInstance(
@@ -55,7 +57,8 @@ class InstanceRepository:
                     n_samples=len(volt_ds),
                     cell_id=str(attrs.get("cell_id", "")),
                     provider=str(attrs.get("provider", "")),
-                    soh=float(attrs.get("curve_soh")),  # type: ignore
+                    soh=float(attrs.get("soh", 0.0)),
+                    curve_soh=float(c_soh) if c_soh is not None else 0.0,
                     ambient_temperature=float(attrs.get("ambient_temperature")),  # type: ignore
                     datetime=datetime.fromisoformat(str(attrs.get("datetime"))),
                     protocol=str(attrs.get("protocol")),
@@ -65,7 +68,6 @@ class InstanceRepository:
                     else None,
                     split=str(split) if split not in (None, "None") else None,
                     dci=float(attrs.get("discharge_cycle_index", 0)),
-                    mean_neg_current=float(attrs.get("mean_neg_current", 0.0)),
                     _data_loader=self._create_data_loader(p),
                 )
                 instances.append(inst)

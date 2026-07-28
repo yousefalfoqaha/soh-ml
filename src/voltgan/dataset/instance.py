@@ -13,6 +13,7 @@ class DischargeInstance:
     cell_id: str
     provider: str
     soh: float
+    curve_soh: float
     ambient_temperature: float
     datetime: datetime
     protocol: str
@@ -20,7 +21,6 @@ class DischargeInstance:
     discharge_rate: float | None
     split: str | None
     dci: float
-    mean_neg_current: float
 
     _data_loader: Callable[[], np.ndarray] = field(repr=False)
     _data: np.ndarray | None = field(default=None, init=False, repr=False)

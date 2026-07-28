@@ -59,7 +59,7 @@ class WuppertalIngestor(DatasetIngestor):
             return
 
         records = [
-            (inst.dci, inst.soh, inst.ambient_temperature, inst.mean_neg_current)
+            (inst.dci, inst.soh, inst.ambient_temperature, inst.discharge_rate)
             for inst in instances
         ]
 
@@ -171,7 +171,6 @@ class WuppertalIngestor(DatasetIngestor):
                 abs(float(np.trapezoid(cur, i_times[i_mask]))) / NOMINAL_CAPACITY,
                 1.0,
             )
-            w.mnc = float(np.mean(np.abs(cur[cur < 0]))) if np.any(cur < 0) else 0.0
 
             t_mask = (t_times >= w.start) & (t_times <= w.end)
             w.amb = (
@@ -213,17 +212,19 @@ class WuppertalIngestor(DatasetIngestor):
         dt_str = dt.strftime("%Y%m%d")
 
         for w in windows:
-            temp_center = "NaN" if math.isnan(w.amb) else f"{int(round(w.amb / 5) * 5)}"
+            temp_str = (
+                "TempNaN" if math.isnan(w.amb) else f"Temp{int(round(w.amb / 5) * 5)}"
+            )
 
-            name_parts = [phase, w.protocol]
+            name_parts = [f"Cyc{cycle_index:03d}", phase, w.protocol]
+
             if w.discharge_rate is not None:
                 name_parts.append(f"{w.discharge_rate}C")
 
+            name_parts.append(temp_str)
             name_parts.append(dt_str)
-            name_parts.append(f"cyc{cycle_index:04d}")
-            name_parts.append(f"temp{temp_center}")
 
-            filename = "-".join(name_parts) + ".hdf"
+            filename = "_".join(name_parts) + ".hdf"
 
             if self.repo.exists(cell_id=mcu, filename=filename):
                 cycle_index += 1
@@ -254,7 +255,6 @@ class WuppertalIngestor(DatasetIngestor):
                     "cell_id": mcu,
                     "soh": w.soh,
                     "ambient_temperature": w.amb,
-                    "mean_neg_current": w.mnc,
                     "datetime": dt.isoformat(),
                     "discharge_cycle_index": cycle_index,
                     "protocol": w.protocol,

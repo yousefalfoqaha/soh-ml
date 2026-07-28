@@ -18,7 +18,11 @@ class PredictionResult:
 
     @property
     def abs_pct_error(self) -> float:
-        return abs(self.predicted_soh - self.instance.soh) / self.instance.soh * 100
+        return (
+            abs(self.predicted_soh - self.instance.curve_soh)
+            / self.instance.curve_soh
+            * 100
+        )
 
 
 @dataclass(frozen=True)
@@ -68,7 +72,7 @@ class MetricsAggregator:
                 pct_err=float("nan"),
             )
 
-        actuals = np.array([r.instance.soh for r in results])
+        actuals = np.array([r.instance.curve_soh for r in results])
         preds = np.array([r.predicted_soh for r in results])
         cycles = len(results)
         r2 = float(r2_score(actuals, preds)) if cycles >= 2 else None

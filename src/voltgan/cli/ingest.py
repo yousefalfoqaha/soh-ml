@@ -6,8 +6,8 @@ from voltgan.config import (
     OXFORD_MAT_PATH,
     OXFORD_PROVIDER,
     RASTER_FREQUENCY,
-    REFERENCE_CURRENT_RANGE,
-    REFERENCE_TEMPERATURE_RANGE,
+    REFERENCE_DISCHARGE_RATE,
+    REFERENCE_TEMPERATURE,
     STATS_PATH,
     TRAINING_MCUS,
     WUPPERTAL_PROVIDER,
@@ -23,8 +23,8 @@ def main() -> None:
     oxford_repo = InstanceRepository(provider=OXFORD_PROVIDER)
 
     fitter = SohCurveFitter(
-        ref_temp_range=REFERENCE_TEMPERATURE_RANGE,
-        ref_current_range=REFERENCE_CURRENT_RANGE,
+        reference_temperature=REFERENCE_TEMPERATURE,
+        reference_discharge_rate=REFERENCE_DISCHARGE_RATE,
     )
 
     print("\n--- Ingesting Wuppertal Data ---")
