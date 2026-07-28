@@ -200,3 +200,4 @@ def main() -> None:
 
     torch.save(client.model.state_dict(), GENERATOR_CHECKPOINT_PATH)
     print(f"Model saved -> {GENERATOR_CHECKPOINT_PATH}")
+

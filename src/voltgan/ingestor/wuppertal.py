@@ -1,9 +1,20 @@
+import math
 from pathlib import Path
 
 import numpy as np
 from asammdf import MDF
 
-from voltgan.config import AGING_END, AGING_START, CHANNELS, CURRENT_CHANNEL
+from voltgan.config import (
+    AGING_END,
+    AGING_START,
+    CHANNELS,
+    CURRENT_CHANNEL,
+    NOMINAL_CAPACITY,
+    TESTING_MCUS,
+    TRAINING_MCUS,
+    VALIDATION_MCUS,
+    WUPPERTAL_PROVIDER,
+)
 from voltgan.dataset.repository import InstanceRepository
 from voltgan.dataset.soh_curve import SohCurveFitter
 from voltgan.ingestor.base import DatasetIngestor, Window
@@ -13,17 +24,14 @@ from voltgan.utils.discover import FileDiscoverer
 class WuppertalIngestor(DatasetIngestor):
     def __init__(
         self,
-        raw_dir: Path,
-        mcus: list[str],
-        nominal_capacity: float,
+        mf4_dir: Path,
         raster: float,
         min_seq_len: int,
         repo: InstanceRepository,
         fitter: SohCurveFitter,
     ):
-        self.raw_dir = raw_dir
-        self.mcus = mcus
-        self.nominal_capacity = nominal_capacity
+        self.raw_dir = mf4_dir
+        self._mcus = TRAINING_MCUS + VALIDATION_MCUS + TESTING_MCUS
         self.raster = raster
         self.min_seq_len = min_seq_len
         self.repo = repo
@@ -31,10 +39,10 @@ class WuppertalIngestor(DatasetIngestor):
         self.amb_temp_ch = "ClimaTemp"
 
     def ingest(self) -> None:
-        files = FileDiscoverer.find(self.raw_dir, self.mcus, (".mf4", ".dat"))
+        files = FileDiscoverer.find(self.raw_dir, self._mcus, (".mf4",))
         files.sort(key=FileDiscoverer.sort_wuppertal)
 
-        for mcu in self.mcus:
+        for mcu in self._mcus:
             dci = 0
             mcu_files = [
                 f for f in files if f.relative_to(self.raw_dir).parts[0] == mcu
@@ -82,7 +90,7 @@ class WuppertalIngestor(DatasetIngestor):
             mdf.close()
             return dci
 
-        windows = self._calc_soh_and_amb(mdf, self._extract_periods(mdf))
+        windows = self._calculate_soh_and_ambient(mdf, self._extract_periods(mdf))
         dci = self._export_hdf(mdf, mf4_path, windows, dci, mcu)
         mdf.close()
         return dci
@@ -140,7 +148,9 @@ class WuppertalIngestor(DatasetIngestor):
                     )
         return instances
 
-    def _calc_soh_and_amb(self, mdf: MDF, windows: list[Window]) -> list[Window]:
+    def _calculate_soh_and_ambient(
+        self, mdf: MDF, windows: list[Window]
+    ) -> list[Window]:
         i_samps, i_times = (
             mdf.get(CURRENT_CHANNEL).samples,
             mdf.get(CURRENT_CHANNEL).timestamps,
@@ -158,7 +168,7 @@ class WuppertalIngestor(DatasetIngestor):
 
             cur = i_samps[i_mask]
             w.soh = min(
-                abs(float(np.trapezoid(cur, i_times[i_mask]))) / self.nominal_capacity,
+                abs(float(np.trapezoid(cur, i_times[i_mask]))) / NOMINAL_CAPACITY,
                 1.0,
             )
             w.mnc = float(np.mean(np.abs(cur[cur < 0]))) if np.any(cur < 0) else 0.0
@@ -169,18 +179,29 @@ class WuppertalIngestor(DatasetIngestor):
                 if np.any(t_mask)
                 else float("nan")
             )
+
+            if w.protocol in ("Constant", "Pulse"):
+                min_current = float(np.min(cur))
+                capacity_ah = NOMINAL_CAPACITY / 3600.0
+                raw_rate = abs(min_current) / capacity_ah
+                w.discharge_rate = round(raw_rate, 1)
+            else:
+                w.discharge_rate = None
+
             valid.append(w)
         return valid
 
     def _export_hdf(
-        self, mdf: MDF, source_path: Path, windows: list[Window], dci: int, mcu: str
+        self,
+        mdf: MDF,
+        source_path: Path,
+        windows: list[Window],
+        cycle_index: int,
+        mcu: str,
     ) -> int:
         if not windows:
-            return dci
+            return cycle_index
 
-        base_path = self.repo.root / source_path.relative_to(self.raw_dir).with_suffix(
-            ""
-        )
         df = mdf.to_dataframe(channels=CHANNELS, raster=None, time_from_zero=False)
         dt = FileDiscoverer.sort_wuppertal(source_path)
         phase = (
@@ -189,14 +210,23 @@ class WuppertalIngestor(DatasetIngestor):
             else ("Aging" if dt <= AGING_END else "Post-Aging")
         )
 
-        for i, w in enumerate(windows):
-            out_file = base_path.parent / (
-                f"{base_path.name}.hdf"
-                if len(windows) == 1
-                else f"{base_path.name}_{i + 1}.hdf"
-            )
-            if out_file.exists():
-                dci += 1
+        dt_str = dt.strftime("%Y%m%d")
+
+        for w in windows:
+            temp_center = "NaN" if math.isnan(w.amb) else f"{int(round(w.amb / 5) * 5)}"
+
+            name_parts = [phase, w.protocol]
+            if w.discharge_rate is not None:
+                name_parts.append(f"{w.discharge_rate}C")
+
+            name_parts.append(dt_str)
+            name_parts.append(f"cyc{cycle_index:04d}")
+            name_parts.append(f"temp{temp_center}")
+
+            filename = "-".join(name_parts) + ".hdf"
+
+            if self.repo.exists(cell_id=mcu, filename=filename):
+                cycle_index += 1
                 continue
 
             start_t, end_t = max(w.start, df.index[0]), min(w.end, df.index[-1])
@@ -216,19 +246,24 @@ class WuppertalIngestor(DatasetIngestor):
             }
 
             self.repo.save(
-                filepath=out_file,
+                cell_id=mcu,
+                filename=filename,
                 data=resampled,
                 metadata={
+                    "provider": WUPPERTAL_PROVIDER,
                     "cell_id": mcu,
                     "soh": w.soh,
                     "ambient_temperature": w.amb,
                     "mean_neg_current": w.mnc,
                     "datetime": dt.isoformat(),
-                    "discharge_cycle_index": dci,
+                    "discharge_cycle_index": cycle_index,
                     "protocol": w.protocol,
                     "phase": phase,
+                    "discharge_rate": w.discharge_rate,
                     "total_rows": len(new_idx),
                 },
             )
-            dci += 1
-        return dci
+
+            cycle_index += 1
+
+        return cycle_index

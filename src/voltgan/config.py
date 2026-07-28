@@ -15,6 +15,9 @@ ESTIMATOR_CHECKPOINT_PATH = CHECKPOINT_DIR / "estimator.pt"
 PLOTS_PATH = PROJECT_ROOT / "plots"
 CONFERENCE_PATH = PROJECT_ROOT / "conference"
 
+WUPPERTAL_PROVIDER = "wuppertal"
+OXFORD_PROVIDER = "oxford"
+
 RANDOM_SEED = 42
 
 MAX_SEQUENCE_LENGTH = 30000
@@ -40,7 +43,8 @@ LEAVE_OUT_TEMPERATURE_RANGE = (-2.0, 2.0)
 TRAINING_MCUS = ["mcu1", "mcu2", "mcu7", "mcu4", "mcu5", "mcu6"]
 VALIDATION_MCUS = ["mcu3"]
 TESTING_MCUS = ["mcu8"]
-ALL_MCUS = TRAINING_MCUS + VALIDATION_MCUS + TESTING_MCUS
+
+OXFORD_MCUS = [f"cell{i}" for i in range(1, 9)]
 
 AGING_START = datetime(2025, 2, 12)
 AGING_END = datetime(2025, 3, 8)

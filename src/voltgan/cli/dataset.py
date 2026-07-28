@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from pathlib import Path
 
-import h5py
 import matplotlib
 
 matplotlib.use("Agg")
@@ -11,14 +9,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from voltgan.config import (
-    ALL_MCUS,
     CONFERENCE_PATH,
-    CURRENT_CHANNEL,
     FEATURE_DISPLAY_NAMES,
-    HDF_ROOT,
     PHASE_ORDER,
     REFERENCE_CURRENT_RANGE,
     REFERENCE_TEMPERATURE_RANGE,
+    TESTING_MCUS,
+    TRAINING_MCUS,
+    VALIDATION_MCUS,
+    WUPPERTAL_PROVIDER,
 )
 from voltgan.dataset import (
     DatasetAnalyzer,
@@ -46,13 +45,12 @@ _DISCHARGE_PROTOCOL_PANELS = [
         "WLTC 2024-09-07 21.45.06 Pulse_Test_SamsungINR2170050E_Cell 5 Zelltester_1.hdf",
     ),
 ]
-_MCU_DIR = Path("/mnt/ssd/datasets/wuppertal/hdf/mcu5")
 _MAX_PULSE_STEPS = 1000
 
 
 def main() -> None:
-    repo = InstanceRepository(root=HDF_ROOT)
-    instances = repo.load(ALL_MCUS)
+    repo = InstanceRepository(provider=WUPPERTAL_PROVIDER)
+    instances = repo.load(TRAINING_MCUS + VALIDATION_MCUS + TESTING_MCUS)
     print(f"Loaded {len(instances)} instances")
 
     # feature statistics table
@@ -120,10 +118,15 @@ def main() -> None:
 
     # soh trajectories plot
     by_mcu = defaultdict(list)
-    for inst in instances:
-        mcu = inst.filepath.relative_to(HDF_ROOT).parts[0]
+    for instance in instances:
+        mcu = instance.cell_id
         by_mcu[mcu].append(
-            (inst.dci, inst.soh, inst.ambient_temperature, inst.mean_neg_current)
+            (
+                instance.dci,
+                instance.soh,
+                instance.ambient_temperature,
+                instance.mean_neg_current,
+            )
         )
 
     mcus = sorted(by_mcu)
@@ -141,14 +144,14 @@ def main() -> None:
             print(f"  {mcu}: not enough reference points, skipping curve")
             continue
 
-        all_dci = np.array([r[0] for r in records], dtype=float)
-        min_dci = float(all_dci.min())
-        max_dci = float(all_dci.max())
-        dense_dci = np.linspace(min_dci, max_dci, 500)
-        dense_soh = np.clip([fit.model(float(t)) for t in dense_dci], 0.0, 1.0)
+        all_cycle_index = np.array([r[0] for r in records], dtype=float)
+        min_cycle_index = float(all_cycle_index.min())
+        max_cycle_index = float(all_cycle_index.max())
+        dense_cycle_index = np.linspace(min_cycle_index, max_cycle_index, 500)
+        dense_soh = np.clip([fit.model(float(t)) for t in dense_cycle_index], 0.0, 1.0)
 
         ax.plot(
-            dense_dci,
+            dense_cycle_index,
             dense_soh,
             color=colors(i % 10),
             lw=1.5,
@@ -185,13 +188,13 @@ def main() -> None:
 
     for name, ax2 in positions:
         filename = panels[name]
-        path = _MCU_DIR / filename
-        with h5py.File(path, "r") as f:
-            group = f[filename]
-            assert isinstance(group, h5py.Group)
-            ds = group[CURRENT_CHANNEL]
-            assert isinstance(ds, h5py.Dataset)
-            current = ds[:]
+        instance = next((i for i in instances if i.filepath.name == filename), None)
+
+        if not instance:
+            print(f"Warning: Panel file {filename} not found in loaded instances.")
+            continue
+
+        current = instance.current
 
         if name == "Pulse":
             current = current[:_MAX_PULSE_STEPS]

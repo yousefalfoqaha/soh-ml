@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 
-from voltgan.config import HDF_ROOT
 from voltgan.dataset.instance import DischargeInstance
 from voltgan.dataset.soh_curve import SohCurveFitter
 
@@ -24,14 +24,12 @@ class McuSummaryRecord:
     cycles: int
 
     def to_latex_cells(self) -> list[str]:
-        mcu_label = self.mcu_id.replace("mcu", "")
+        mcu_label = self.mcu_id.replace("mcu", "").replace("cell", "")
         soh_range = f"${self.soh_max * 100:.1f}$--${self.soh_min * 100:.1f}$"
         return [mcu_label, soh_range, str(self.cycles)]
 
 
 class DatasetAnalyzer:
-    """Computes all dataset-level metrics independently of formatting."""
-
     @staticmethod
     def compute_temp_distribution(
         instances: list[DischargeInstance], phase_order: list[str]
@@ -61,12 +59,15 @@ class DatasetAnalyzer:
         instances: list[DischargeInstance], fitter: SohCurveFitter
     ) -> list[McuSummaryRecord]:
         by_mcu = defaultdict(list)
-        for inst in instances:
-            mcu = inst.filepath.relative_to(HDF_ROOT).parts[0]
-            by_mcu[mcu].append(inst)
+        for instance in instances:
+            by_mcu[instance.cell_id].append(instance)
+
+        def _get_num(mcu_str: str) -> int:
+            match = re.search(r"\d+", mcu_str)
+            return int(match.group()) if match else 0
 
         records = []
-        for mcu_name, insts in sorted(by_mcu.items()):
+        for mcu_name, insts in sorted(by_mcu.items(), key=lambda x: _get_num(x[0])):
             if not insts:
                 continue
 

@@ -1,83 +1,48 @@
-import re
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import cast
 
-import h5py
 import numpy as np
 
-from voltgan.config import (
-    CURRENT_CHANNEL,
-    MAX_SEQUENCE_LENGTH,
-    TEMPERATURE_CHANNEL,
-    VOLTAGE_CHANNEL,
-)
 
-_CELL_PATTERN = re.compile(r"(?:oxford_cell|mcu)(\d+)")
-
-
+@dataclass
 class DischargeInstance:
-    def __init__(self, filepath: Path):
-        self.filepath = filepath
-        self._data: np.ndarray | None = None
+    filepath: Path
+    n_samples: int
+    cell_id: str
+    provider: str
+    soh: float
+    ambient_temperature: float
+    datetime: datetime
+    protocol: str
+    phase: str
+    discharge_rate: float | None
+    split: str | None
+    dci: float
+    mean_neg_current: float
 
-        with h5py.File(filepath, "r") as f:
-            group = f[filepath.name]
-            assert isinstance(group, h5py.Group)
-            signal = cast(h5py.Dataset, group[VOLTAGE_CHANNEL])
-
-            self.n_samples = len(signal)
-
-            soh_file = f.attrs.get("curve_soh")
-            ambient_temperature = f.attrs.get("ambient_temperature")
-            datetime_str = f.attrs.get("datetime")
-            protocol = f.attrs.get("protocol")
-            phase = f.attrs.get("phase")
-            split = f.attrs.get("split")
-            assert isinstance(soh_file, (float, np.floating))
-            assert isinstance(ambient_temperature, (float, np.floating))
-            assert isinstance(datetime_str, str)
-            assert isinstance(protocol, str)
-            assert isinstance(phase, str)
-
-            self.cell_id_attr = f.attrs.get("cell_id")
-            self.soh = float(soh_file)
-            self.ambient_temperature = float(ambient_temperature)
-            self.datetime = datetime.fromisoformat(datetime_str)
-            self.protocol = protocol
-            self.phase = phase
-            self.split = split if isinstance(split, str) else None
-            self.dci = float(f.attrs.get("discharge_cycle_index", 0))
-            self.mean_neg_current = float(f.attrs.get("mean_neg_current", 0.0))
-
-    def _load(self) -> np.ndarray:
-        with h5py.File(self.filepath, "r") as f:
-            group = f[self.filepath.name]
-            assert isinstance(group, h5py.Group)
-
-            data = np.stack(
-                [
-                    cast(h5py.Dataset, group[VOLTAGE_CHANNEL])[:],
-                    cast(h5py.Dataset, group[CURRENT_CHANNEL])[:],
-                    cast(h5py.Dataset, group[TEMPERATURE_CHANNEL])[:],
-                ]
-            ).T.astype(np.float32)
-
-        return data[:MAX_SEQUENCE_LENGTH]
+    _data_loader: Callable[[], np.ndarray] = field(repr=False)
+    _data: np.ndarray | None = field(default=None, init=False, repr=False)
 
     @property
     def data(self) -> np.ndarray:
         if self._data is None:
-            self._data = self._load()
-
+            self._data = self._data_loader()
         return self._data
+
+    @property
+    def voltage(self) -> np.ndarray:
+        return self.data[:, 0]
+
+    @property
+    def current(self) -> np.ndarray:
+        return self.data[:, 1]
+
+    @property
+    def temperature(self) -> np.ndarray:
+        return self.data[:, 2]
 
     @property
     def temp_center(self) -> int:
         return int(round(self.ambient_temperature / 5) * 5)
-
-    @property
-    def cell_id(self) -> int | None:
-        """Numeric cell index parsed from filename (`mcu3`/`oxford_cell3`); else None."""
-        match = _CELL_PATTERN.search(self.filepath.name)
-        return int(match.group(1)) if match else None

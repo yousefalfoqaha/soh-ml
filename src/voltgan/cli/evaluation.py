@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 from collections import defaultdict
 
 import matplotlib
@@ -14,14 +13,15 @@ import torch
 from voltgan.config import (
     CONFERENCE_PATH,
     ESTIMATOR_CHECKPOINT_PATH,
-    HDF_ROOT,
     OXFORD_MCUS,
+    OXFORD_PROVIDER,
     PHASE_ORDER,
     PROTOCOL_ORDER,
     RANDOM_SEED,
     STATS_PATH,
     TESTING_MCUS,
     VALIDATION_MCUS,
+    WUPPERTAL_PROVIDER,
 )
 from voltgan.dataset import EstimatorDataset, InstanceRepository
 from voltgan.evaluation import InferenceEngine
@@ -29,8 +29,6 @@ from voltgan.evaluation.metrics import MetricsAggregator
 from voltgan.evaluation.pfi import FeatureSpec, PermutationImportanceEvaluator
 from voltgan.models import SohEstimatorClient
 from voltgan.utils.latex import HLine, LatexTable, SectionHeader, TableRow
-
-_OXFORD_FILE_PATTERN = re.compile(r"oxford_cell(\d+)_cyc\d{4}\.hdf$")
 
 _TABLE_HEADER = [
     "SoH (\\%)",
@@ -59,7 +57,8 @@ def main() -> None:
     client = SohEstimatorClient(
         device=device, checkpoint_path=ESTIMATOR_CHECKPOINT_PATH
     )
-    repo = InstanceRepository(root=HDF_ROOT)
+
+    repo = InstanceRepository(provider=WUPPERTAL_PROVIDER)
 
     # initialize and run base estimator
     instances = repo.load(VALIDATION_MCUS + TESTING_MCUS)
@@ -161,7 +160,6 @@ def main() -> None:
     for p in PROTOCOL_ORDER:
         if p in report.baseline_metrics and report.baseline_metrics[p].cycles > 0:
             c = report.baseline_metrics[p].to_latex_cells()
-
             # MetricSet cell order: [label, soh, rmse, mae, r2, pct_err, cycles]
             pfi_baseline_items.append(TableRow(cells=[c[0], c[6], c[2], c[3], c[5]]))
 
@@ -242,8 +240,10 @@ def main() -> None:
     plt.close(fig)
     print(f"Chart saved -> {out}")
 
+    oxford_repo = InstanceRepository(provider=OXFORD_PROVIDER)
+
     # oxford zero-shot results
-    oxford_instances = repo.load(OXFORD_MCUS)
+    oxford_instances = oxford_repo.load(OXFORD_MCUS)
     print(f"Loaded {len(oxford_instances)} Oxford instances")
 
     oxford_dataset = EstimatorDataset(oxford_instances, stats)
@@ -254,17 +254,15 @@ def main() -> None:
 
     cell_groups = defaultdict(list)
     for r in oxford_results:
-        m = _OXFORD_FILE_PATTERN.search(r.instance.filepath.name)
-        if m:
-            cell_groups[int(m.group(1))].append(r)
+        cell_groups[r.instance.cell_id].append(r)
 
     oxford_rows = [
         TableRow(
             cells=MetricsAggregator.compute(
-                f"Cell {cell}", cell_groups[cell]
+                f"Cell {cell_id.replace('cell', '')}", cell_groups[cell_id]
             ).to_latex_cells()
         )
-        for cell in sorted(cell_groups)
+        for cell_id in sorted(cell_groups, key=lambda x: int(x.replace("cell", "")))
     ]
 
     LatexTable(

@@ -10,6 +10,7 @@ class Window:
     soh: float = 0.0
     mnc: float = 0.0
     amb: float = float("nan")
+    discharge_rate: float | None = None
 
 
 class DatasetIngestor(ABC):

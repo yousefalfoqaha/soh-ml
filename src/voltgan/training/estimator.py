@@ -148,9 +148,7 @@ def main() -> None:
 
         if avg_val < best_val_loss:
             best_val_loss = avg_val
-            best_state = {
-                k: v.clone() for k, v in client.model.state_dict().items()
-            }
+            best_state = {k: v.clone() for k, v in client.model.state_dict().items()}
             epochs_no_improve = 0
         else:
             epochs_no_improve += 1
@@ -170,3 +168,4 @@ def main() -> None:
 
     torch.save(client.model.state_dict(), ESTIMATOR_CHECKPOINT_PATH)
     print(f"Model saved -> {ESTIMATOR_CHECKPOINT_PATH}")
+

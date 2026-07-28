@@ -1,14 +1,14 @@
 import json
 from pathlib import Path
 
-import h5py
 import numpy as np
 
 from voltgan.config import (
-    AMBIENT_TEMPERATURE_KEY,
+    CURRENT_CHANNEL,
     SOH_KEY,
     TEMP_DELTA_KEY,
     TEMPERATURE_CHANNEL,
+    VOLTAGE_CHANNEL,
 )
 from voltgan.dataset.instance import DischargeInstance
 from voltgan.utils.box_table import print_box_table
@@ -22,63 +22,56 @@ class StatisticsCalculator:
     def compute(
         self, instances: list[DischargeInstance]
     ) -> dict[str, dict[str, float]]:
-        channel_stats: dict[str, dict[str, float]] = {}
+
+        sums = {
+            ch: 0.0
+            for ch in [
+                VOLTAGE_CHANNEL,
+                CURRENT_CHANNEL,
+                TEMPERATURE_CHANNEL,
+                TEMP_DELTA_KEY,
+            ]
+        }
+        sq_sums = {
+            ch: 0.0
+            for ch in [
+                VOLTAGE_CHANNEL,
+                CURRENT_CHANNEL,
+                TEMPERATURE_CHANNEL,
+                TEMP_DELTA_KEY,
+            ]
+        }
+
         total_rows = 0
         soh_values: list[float] = []
 
-        for instance in instances:
-            with h5py.File(instance.filepath, "r") as f:
-                n_rows = int(f.attrs.get("total_rows", 0))
-                total_rows += n_rows
+        for inst in instances:
+            n_rows = inst.n_samples
+            total_rows += n_rows
+            soh_values.append(inst.soh)
 
-                group = f[instance.filepath.name]
-                keys_to_process = [
-                    k
-                    for k in group.keys()
-                    if isinstance(group[k], h5py.Dataset) and not k.startswith("soh_")
-                ]
-                keys_to_process.append(AMBIENT_TEMPERATURE_KEY)
+            v = inst.voltage
+            i = inst.current
+            t = inst.temperature
+            t_delta = t - inst.ambient_temperature
 
-                for key in keys_to_process:
-                    mean = float(f.attrs.get(f"{key}_mean", 0.0))
-                    m2 = float(f.attrs.get(f"{key}_m2", 0.0))
-                    if key not in channel_stats:
-                        channel_stats[key] = {"sum": 0.0, "m2_sum": 0.0, "sum_sq": 0.0}
-                    channel_stats[key]["sum"] += mean * n_rows
-                    channel_stats[key]["m2_sum"] += m2
-                    channel_stats[key]["sum_sq"] += mean * mean * n_rows
-
-                soh_file = f.attrs.get("curve_soh")
-                if soh_file is not None:
-                    soh_values.append(float(soh_file))
-
-                if TEMP_DELTA_KEY not in channel_stats:
-                    channel_stats[TEMP_DELTA_KEY] = {
-                        "sum": 0.0,
-                        "m2_sum": 0.0,
-                        "sum_sq": 0.0,
-                    }
-                tr_file_mean = float(f.attrs[f"{TEMPERATURE_CHANNEL}_mean"]) - float(
-                    f.attrs[AMBIENT_TEMPERATURE_KEY]
-                )
-                channel_stats[TEMP_DELTA_KEY]["sum"] += tr_file_mean * n_rows
-                channel_stats[TEMP_DELTA_KEY]["sum_sq"] += (
-                    tr_file_mean * tr_file_mean * n_rows
-                )
-                channel_stats[TEMP_DELTA_KEY]["m2_sum"] += float(
-                    f.attrs.get(f"{TEMPERATURE_CHANNEL}_m2", 0.0)
-                )
+            for key, arr in zip(
+                [VOLTAGE_CHANNEL, CURRENT_CHANNEL, TEMPERATURE_CHANNEL, TEMP_DELTA_KEY],
+                [v, i, t, t_delta],
+            ):
+                sums[key] += float(np.sum(arr))
+                sq_sums[key] += float(np.sum(arr**2))
 
         if total_rows == 0:
             raise ValueError("No data points found.")
 
         result: dict[str, dict[str, float]] = {}
-        for channel, stats in channel_stats.items():
-            mean = stats["sum"] / total_rows
-            variance = (
-                stats["m2_sum"] + stats["sum_sq"] - total_rows * mean * mean
-            ) / total_rows
-            result[channel] = {
+
+        for key in sums.keys():
+            mean = sums[key] / total_rows
+            variance = (sq_sums[key] / total_rows) - (mean**2)
+
+            result[key] = {
                 "mean": float(mean),
                 "standard_deviation": float(np.sqrt(max(variance, 1e-8))),
             }

@@ -79,7 +79,9 @@ def main() -> None:
     t_lo, t_hi = LEAVE_OUT_TEMPERATURE_RANGE
     repo = InstanceRepository(root=HDF_ROOT)
     train_instances = [
-        i for i in repo.load(TRAINING_MCUS) if not (t_lo <= i.ambient_temperature <= t_hi)
+        i
+        for i in repo.load(TRAINING_MCUS)
+        if not (t_lo <= i.ambient_temperature <= t_hi)
     ]
     print(f"Training instances after temp filter: {len(train_instances)}")
 
@@ -178,9 +180,7 @@ def main() -> None:
                 fake = generator(X, conditions, noise).detach()
                 critic_real = critic(real, conditions).reshape(-1)
                 critic_fake = critic(fake, conditions).reshape(-1)
-                gp = 10 * gradient_penalty(
-                    real, fake, critic, conditions, device
-                )
+                gp = 10 * gradient_penalty(real, fake, critic, conditions, device)
                 loss_critic = -(torch.mean(critic_real) - torch.mean(critic_fake)) + gp
                 crit_optim.zero_grad()
                 loss_critic.backward()
@@ -222,3 +222,4 @@ def main() -> None:
     torch.save(generator.model.state_dict(), GENERATOR_CHECKPOINT_PATH)
     torch.save(critic.state_dict(), CRITIC_CHECKPOINT_PATH)
     print(f"Model saved -> {GENERATOR_CHECKPOINT_PATH}")
+

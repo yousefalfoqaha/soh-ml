@@ -11,6 +11,7 @@ from voltgan.config import (
     OXFORD_NOMINAL_CAPACITY_MAH,
     OXFORD_PHASE,
     OXFORD_PROTOCOL,
+    OXFORD_PROVIDER,
 )
 from voltgan.dataset.repository import InstanceRepository
 from voltgan.ingestor.base import DatasetIngestor
@@ -21,7 +22,6 @@ class OxfordIngestor(DatasetIngestor):
         self.mat_path = mat_path
         self.min_seq_len = min_seq_len
         self.repo = repo
-        self.repo.root.mkdir(parents=True, exist_ok=True)
 
     def ingest(self) -> None:
         if not self.mat_path.exists():
@@ -34,8 +34,9 @@ class OxfordIngestor(DatasetIngestor):
                 continue
 
             for dci, cycle in enumerate(mat[cell_key][0, 0]["cyc"][0]):
-                out_file = self.repo.root / f"oxford_{cell_key}_cyc{dci:04d}.hdf"
-                if out_file.exists():
+                filename = f"cycle-{dci:04d}.hdf"
+
+                if self.repo.exists(cell_key, filename):
                     continue
 
                 t = cycle["t"][0, 0].flatten()
@@ -50,13 +51,16 @@ class OxfordIngestor(DatasetIngestor):
                 soh = min(capacity / (OXFORD_NOMINAL_CAPACITY_MAH / 1000.0), 1.0)
 
                 self.repo.save(
-                    filepath=out_file,
+                    cell_id=cell_key,
+                    filename=filename,
                     data=dict(zip(CHANNELS, [v, i, temp])),
                     metadata={
+                        "provider": OXFORD_PROVIDER,
                         "cell_id": cell_key,
                         "soh": soh,
                         "curve_soh": soh,
                         "ambient_temperature": OXFORD_AMBIENT_TEMPERATURE,
+                        "discharge_rate": 1.0,
                         "mean_neg_current": float(np.mean(np.abs(i[i < 0])))
                         if np.any(i < 0)
                         else 0.0,
