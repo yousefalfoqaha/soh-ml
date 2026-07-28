@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -17,25 +19,30 @@ from voltgan.dataset.instance import DischargeInstance
 from voltgan.utils.discover import FileDiscoverer
 
 
+class _HDFDataLoader:
+    def __init__(self, filepath: Path):
+        self.filepath = filepath
+
+    def __call__(self) -> np.ndarray:
+        with h5py.File(self.filepath, "r") as f:
+            group = cast(h5py.Group, f[self.filepath.name])
+            data = np.stack(
+                [
+                    cast(h5py.Dataset, group[VOLTAGE_CHANNEL])[:],
+                    cast(h5py.Dataset, group[CURRENT_CHANNEL])[:],
+                    cast(h5py.Dataset, group[TEMPERATURE_CHANNEL])[:],
+                ]
+            ).T.astype(np.float32)
+        return data[:MAX_SEQUENCE_LENGTH]
+
+
 class InstanceRepository:
     def __init__(self, provider: str):
         self.provider = provider
         self.root = HDF_ROOT / provider
 
     def _create_data_loader(self, filepath: Path) -> Callable[[], np.ndarray]:
-        def loader() -> np.ndarray:
-            with h5py.File(filepath, "r") as f:
-                group = cast(h5py.Group, f[filepath.name])
-                data = np.stack(
-                    [
-                        cast(h5py.Dataset, group[VOLTAGE_CHANNEL])[:],
-                        cast(h5py.Dataset, group[CURRENT_CHANNEL])[:],
-                        cast(h5py.Dataset, group[TEMPERATURE_CHANNEL])[:],
-                    ]
-                ).T.astype(np.float32)
-            return data[:MAX_SEQUENCE_LENGTH]
-
-        return loader
+        return _HDFDataLoader(filepath)
 
     def load(self, cells: list[str]) -> list[DischargeInstance]:
         paths = FileDiscoverer.find(self.root, cells, (".hdf",))

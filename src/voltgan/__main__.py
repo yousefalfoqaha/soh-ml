@@ -20,9 +20,13 @@ Commands:
 def _main() -> None:
     if len(sys.argv) < 2 or sys.argv[1] not in _VALID:
         print(_USAGE)
-        sys.exit(1 if (len(sys.argv) < 2 or sys.argv[1] not in _VALID) else 0)
+        sys.exit(1)
 
-    command = sys.argv.pop(1)
+    command = sys.argv[1]
+
+    # Remove the top-level command only
+    sys.argv = [sys.argv[0], *sys.argv[2:]]
+
     match command:
         case "ingest":
             from voltgan.cli.ingest import main as _main_fn
@@ -45,4 +49,3 @@ def _main() -> None:
 
 if __name__ == "__main__":
     _main()
-

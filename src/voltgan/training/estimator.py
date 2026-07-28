@@ -1,10 +1,24 @@
 from __future__ import annotations
 
+import json
 import signal
 
 import torch
 from torch.utils.data import DataLoader
 
+from voltgan.config import (
+    BATCH_SIZE,
+    ESTIMATOR_CHECKPOINT_PATH,
+    LEARNING_RATE,
+    N_EPOCHS,
+    RANDOM_SEED,
+    STATS_PATH,
+    TESTING_MCUS,
+    TRAINING_MCUS,
+    VALIDATION_MCUS,
+    WUPPERTAL_PROVIDER,
+)
+from voltgan.dataset import EstimatorDataset, InstanceRepository
 from voltgan.models import SohEstimatorClient
 
 _interrupted = False
@@ -24,30 +38,15 @@ def _worker_init(worker_id):
 
 
 def main() -> None:
-    import json
-
-    from voltgan.config import (
-        BATCH_SIZE,
-        ESTIMATOR_CHECKPOINT_PATH,
-        HDF_ROOT,
-        LEARNING_RATE,
-        N_EPOCHS,
-        RANDOM_SEED,
-        STATS_PATH,
-        TESTING_MCUS,
-        TRAINING_MCUS,
-        VALIDATION_MCUS,
-    )
-    from voltgan.dataset import EstimatorDataset, InstanceRepository
 
     torch.manual_seed(RANDOM_SEED)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    repo = InstanceRepository(root=HDF_ROOT)
-    train_instances = repo.load(TRAINING_MCUS)
+    wuppertal_repo = InstanceRepository(provider=WUPPERTAL_PROVIDER)
+    train_instances = wuppertal_repo.load(TRAINING_MCUS)
     val_mcus = VALIDATION_MCUS + TESTING_MCUS
-    val_instances = repo.load(val_mcus)
+    val_instances = wuppertal_repo.load(val_mcus)
 
     with open(STATS_PATH) as f:
         stats = json.load(f)
@@ -168,4 +167,3 @@ def main() -> None:
 
     torch.save(client.model.state_dict(), ESTIMATOR_CHECKPOINT_PATH)
     print(f"Model saved -> {ESTIMATOR_CHECKPOINT_PATH}")
-

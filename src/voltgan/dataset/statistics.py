@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 
 from voltgan.config import (
+    AMBIENT_TEMPERATURE_KEY,
     CURRENT_CHANNEL,
     SOH_KEY,
     TEMP_DELTA_KEY,
@@ -23,24 +24,16 @@ class StatisticsCalculator:
         self, instances: list[DischargeInstance]
     ) -> dict[str, dict[str, float]]:
 
-        sums = {
-            ch: 0.0
-            for ch in [
-                VOLTAGE_CHANNEL,
-                CURRENT_CHANNEL,
-                TEMPERATURE_CHANNEL,
-                TEMP_DELTA_KEY,
-            ]
-        }
-        sq_sums = {
-            ch: 0.0
-            for ch in [
-                VOLTAGE_CHANNEL,
-                CURRENT_CHANNEL,
-                TEMPERATURE_CHANNEL,
-                TEMP_DELTA_KEY,
-            ]
-        }
+        stat_keys = [
+            VOLTAGE_CHANNEL,
+            CURRENT_CHANNEL,
+            TEMPERATURE_CHANNEL,
+            TEMP_DELTA_KEY,
+            AMBIENT_TEMPERATURE_KEY,
+        ]
+
+        sums = {ch: 0.0 for ch in stat_keys}
+        sq_sums = {ch: 0.0 for ch in stat_keys}
 
         total_rows = 0
         soh_values: list[float] = []
@@ -54,13 +47,18 @@ class StatisticsCalculator:
             i = inst.current
             t = inst.temperature
             t_delta = t - inst.ambient_temperature
+            amb = inst.ambient_temperature
 
-            for key, arr in zip(
-                [VOLTAGE_CHANNEL, CURRENT_CHANNEL, TEMPERATURE_CHANNEL, TEMP_DELTA_KEY],
-                [v, i, t, t_delta],
+            for key, val in zip(
+                stat_keys,
+                [v, i, t, t_delta, amb],
             ):
-                sums[key] += float(np.sum(arr))
-                sq_sums[key] += float(np.sum(arr**2))
+                if key == AMBIENT_TEMPERATURE_KEY:
+                    sums[key] += float(val * n_rows)
+                    sq_sums[key] += float((val**2) * n_rows)
+                else:
+                    sums[key] += float(np.sum(val))
+                    sq_sums[key] += float(np.sum(val**2))
 
         if total_rows == 0:
             raise ValueError("No data points found.")
