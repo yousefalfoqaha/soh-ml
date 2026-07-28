@@ -74,7 +74,7 @@ class EstimatorDataset(torch.utils.data.Dataset):
         ) / self._standard_deviations[2]
         conditions = torch.tensor([amb_temp_std], dtype=torch.float32)
 
-        soh_std = (instance.soh - self._means[3]) / self._standard_deviations[3]
+        soh_std = (instance.curve_soh - self._means[3]) / self._standard_deviations[3]
         y = torch.tensor([soh_std], dtype=torch.float32)
 
         return X, conditions, y

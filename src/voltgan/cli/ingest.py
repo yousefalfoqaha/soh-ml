@@ -22,26 +22,26 @@ def main() -> None:
     wuppertal_repo = InstanceRepository(provider=WUPPERTAL_PROVIDER)
     oxford_repo = InstanceRepository(provider=OXFORD_PROVIDER)
 
-    fitter = SohCurveFitter(
-        reference_temperature=REFERENCE_TEMPERATURE,
-        reference_discharge_rate=REFERENCE_DISCHARGE_RATE,
-    )
+    # fitter = SohCurveFitter(
+    #     reference_temperature=REFERENCE_TEMPERATURE,
+    #     reference_discharge_rate=REFERENCE_DISCHARGE_RATE,
+    # )
 
-    print("\n--- Ingesting Wuppertal Data ---")
-    WuppertalIngestor(
-        mf4_dir=DATASET_PATH / "mf4",
-        raster=RASTER_FREQUENCY,
-        min_seq_len=MIN_SEQUENCE_LENGTH,
-        repo=wuppertal_repo,
-        fitter=fitter,
-    ).ingest()
+    # print("\n--- Ingesting Wuppertal Data ---")
+    # WuppertalIngestor(
+    #     mf4_dir=DATASET_PATH / "mf4",
+    #     raster=RASTER_FREQUENCY,
+    #     min_seq_len=MIN_SEQUENCE_LENGTH,
+    #     repo=wuppertal_repo,
+    #     fitter=fitter,
+    # ).ingest()
 
-    print("\n--- Ingesting Oxford Data ---")
-    OxfordIngestor(
-        mat_path=OXFORD_MAT_PATH,
-        min_seq_len=MIN_SEQUENCE_LENGTH,
-        repo=oxford_repo,
-    ).ingest()
+    # print("\n--- Ingesting Oxford Data ---")
+    # OxfordIngestor(
+    #     mat_path=OXFORD_MAT_PATH,
+    #     min_seq_len=MIN_SEQUENCE_LENGTH,
+    #     repo=oxford_repo,
+    # ).ingest()
 
     print("\n--- Calculating Statistics ---")
     training_instances = wuppertal_repo.load(TRAINING_MCUS)

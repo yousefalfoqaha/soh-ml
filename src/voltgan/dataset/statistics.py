@@ -23,7 +23,6 @@ class StatisticsCalculator:
     def compute(
         self, instances: list[DischargeInstance]
     ) -> dict[str, dict[str, float]]:
-
         stat_keys = [
             VOLTAGE_CHANNEL,
             CURRENT_CHANNEL,
@@ -40,6 +39,9 @@ class StatisticsCalculator:
 
         for inst in instances:
             n_rows = inst.n_samples
+            if n_rows == 0:
+                continue
+
             total_rows += n_rows
             soh_values.append(inst.curve_soh)
 
@@ -68,19 +70,47 @@ class StatisticsCalculator:
         for key in sums.keys():
             mean = sums[key] / total_rows
             variance = (sq_sums[key] / total_rows) - (mean**2)
+            std = float(np.sqrt(max(variance, 1e-8)))
+
+            if np.isnan(mean) or np.isinf(mean) or np.isnan(std) or np.isinf(std):
+                raise ValueError(
+                    f"Invalid or NaN/Inf statistics detected for channel '{key}': mean={mean}, std={std}"
+                )
+
+            if key == VOLTAGE_CHANNEL and (mean < 1.0 or mean > 5.0):
+                raise ValueError(f"Unrealistic voltage mean detected: {mean:.4f}")
+            if key == TEMPERATURE_CHANNEL and (mean < -50.0 or mean > 150.0):
+                raise ValueError(f"Unrealistic temperature mean detected: {mean:.4f}")
+            if key == AMBIENT_TEMPERATURE_KEY and (mean < -50.0 or mean > 100.0):
+                raise ValueError(
+                    f"Unrealistic ambient temperature mean detected: {mean:.4f}"
+                )
 
             result[key] = {
                 "mean": float(mean),
-                "standard_deviation": float(np.sqrt(max(variance, 1e-8))),
+                "standard_deviation": std,
             }
 
         if not soh_values:
             raise ValueError("No curve_soh attributes found across discovered files.")
 
         soh_array = np.asarray(soh_values, dtype=np.float64)
+        soh_mean = float(soh_array.mean())
+        soh_std = float(np.sqrt(max(soh_array.var(), 1e-8)))
+
+        if (
+            np.isnan(soh_mean)
+            or np.isinf(soh_mean)
+            or soh_mean <= 0.0
+            or soh_mean > 1.0
+        ):
+            raise ValueError(
+                f"Unrealistic or invalid SOH mean detected: {soh_mean:.4f}"
+            )
+
         result[SOH_KEY] = {
-            "mean": float(soh_array.mean()),
-            "standard_deviation": float(np.sqrt(max(soh_array.var(), 1e-8))),
+            "mean": soh_mean,
+            "standard_deviation": soh_std,
         }
 
         self._print_stats(result, total_rows)
