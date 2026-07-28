@@ -1,102 +1,101 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
-class LatexTableWriter:
-    """Generic fluent builder for LaTeX tables.
+class LatexFormatter:
+    """Utility class encapsulating all LaTeX string formatting operations."""
 
-    Accepts pre-formatted strings only — no domain imports, no metric
-    formatting logic. Presentation logic for `MetricSet` etc. lives on the
-    DTOs via their `.cells()` methods; the CLI orchestrator wires DTOs ->
-    cells -> this writer.
-    """
+    @staticmethod
+    def bold_cells(cells: list[str]) -> list[str]:
+        """Applies LaTeX bolding to cells, respecting math mode."""
+        formatted = []
+        for cell in cells:
+            if cell == "--":
+                formatted.append("--")
+            elif cell.startswith("$") and cell.endswith("$"):
+                # Unwrap math mode and apply \mathbf
+                inner = cell[1:-1]
+                formatted.append(rf"$\mathbf{{{inner}}}$")
+            else:
+                formatted.append(rf"\textbf{{{cell}}}")
+        return formatted
 
-    def __init__(
-        self,
-        out_path: str | Path,
-        *,
-        float_pos: str = "[H]",
-        body_size: str = "footnotesize",
-    ):
-        self.out_path = Path(out_path)
-        self.float_pos = float_pos
-        self.body_size = body_size
-        self._caption: str | None = None
-        self._label: str | None = None
-        self._align: str = "l"
-        self._lines: list[str] = []
 
-    def caption(self, s: str) -> "LatexTableWriter":
-        self._caption = s
-        return self
+class RowItem(ABC):
+    """Abstract base class contract for all table components."""
 
-    def label(self, s: str) -> "LatexTableWriter":
-        self._label = s
-        return self
+    @abstractmethod
+    def render(self, num_cols: int) -> str:
+        pass
 
-    def align(self, spec: str) -> "LatexTableWriter":
-        self._align = spec
-        return self
 
-    def header(self, cells: list[str]) -> "LatexTableWriter":
-        """Add the bolded header row (called once, after caption/label/align)."""
-        header_cells = " & ".join(rf"\textbf{{{c}}}" for c in cells)
-        self._lines.append(header_cells + r" \\")
-        return self
+@dataclass
+class TableRow(RowItem):
+    cells: list[str]
+    bold: bool = False
 
-    def hline(self) -> "LatexTableWriter":
-        self._lines.append(r"\hline")
-        return self
-
-    def row(self, cells: list[str]) -> "LatexTableWriter":
-        self._lines.append(" & ".join(cells) + r" \\")
-        return self
-
-    def rows(self, list_of_cells: list[list[str]]) -> "LatexTableWriter":
-        for cells in list_of_cells:
-            self.row(cells)
-        return self
-
-    def bold_row(self, cells: list[str]) -> "LatexTableWriter":
-        """Each cell is already formatted bold by the caller (DTO .cells(bold=True))."""
-        self.row(cells)
-        return self
-
-    def section(self, subheader: str) -> "LatexTableWriter":
-        """Multicolumn subheader row spanning all columns."""
-        n = len(self._align)
-        self._lines.append(
-            rf"\multicolumn{{{n}}}{{c}}{{\textbf{{{subheader}}}}}" + r" \\"
+    def render(self, num_cols: int) -> str:
+        cells_to_render = (
+            LatexFormatter.bold_cells(self.cells) if self.bold else self.cells
         )
-        return self
+        return " & ".join(cells_to_render) + r" \\"
 
-    def write(self) -> None:
-        """Build the full LaTeX skeleton from accumulated state and write to disk."""
-        if self._caption is None or self._label is None:
-            raise RuntimeError("caption() and label() are required before write()")
-        if not self._lines:
-            raise RuntimeError("no rows added; nothing to write")
 
-        skeleton = [
+@dataclass
+class SectionHeader(RowItem):
+    title: str
+
+    def render(self, num_cols: int) -> str:
+        return rf"\multicolumn{{{num_cols}}}{{c}}{{\textbf{{{self.title}}}}}" + r" \\"
+
+
+@dataclass
+class HLine(RowItem):
+    def render(self, num_cols: int = 0) -> str:
+        return r"\hline"
+
+
+@dataclass
+class LatexTable:
+    """Declarative schema for generating a LaTeX table using standard dataclasses."""
+
+    out_path: Path
+    caption: str
+    label: str
+    headers: list[str]
+    align: str = "l"
+    float_pos: str = "[H]"
+    body_size: str = "footnotesize"
+
+    items: list[RowItem] = field(default_factory=list)
+
+    @property
+    def num_columns(self) -> int:
+        return len(self.align)
+
+    def render_content(self) -> str:
+        lines = [
             rf"\begin{{table}}{self.float_pos}",
-            rf"    \caption{{{self._caption}}}",
-            rf"    \label{{{self._label}}}",
+            rf"    \caption{{{self.caption}}}",
+            rf"    \label{{{self.label}}}",
             r"    \begin{center}",
             f"        \\{self.body_size}",
-            rf"        \begin{{tabular}}{{{self._align}}}",
+            rf"        \begin{{tabular}}{{{self.align}}}",
+            r"            \hline",
+            "            "
+            + " & ".join(LatexFormatter.bold_cells(self.headers))
+            + r" \\",
             r"            \hline",
         ]
-        body = []
-        for line in self._lines:
-            if line == r"\hline":
-                body.append(r"            \hline")
-            elif line.startswith(r"\multicolumn"):
-                body.append(f"            {line}")
-            else:
-                body.append(f"            {line}")
-        skeleton.extend(body)
-        skeleton.extend(
+
+        for item in self.items:
+            # Polymorphic render call
+            lines.append(f"            {item.render(self.num_columns)}")
+
+        lines.extend(
             [
                 r"            \hline",
                 r"        \end{tabular}",
@@ -104,8 +103,9 @@ class LatexTableWriter:
                 r"\end{table}",
             ]
         )
+        return "\n".join(lines) + "\n"
 
+    def write(self) -> None:
         self.out_path.parent.mkdir(parents=True, exist_ok=True)
-        self.out_path.write_text("\n".join(skeleton) + "\n")
+        self.out_path.write_text(self.render_content())
         print(f"LaTeX table saved -> {self.out_path}")
-

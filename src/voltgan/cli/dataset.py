@@ -21,12 +21,12 @@ from voltgan.config import (
     REFERENCE_TEMPERATURE_RANGE,
 )
 from voltgan.dataset import (
-    DischargeInstance,
+    DatasetAnalyzer,
     InstanceRepository,
     SohCurveFitter,
     StatisticsCalculator,
 )
-from voltgan.utils import LatexTableWriter
+from voltgan.utils import HLine, LatexTable, TableRow
 
 _DISCHARGE_PROTOCOL_PANELS = [
     (
@@ -55,112 +55,71 @@ def main() -> None:
     instances = repo.load(ALL_MCUS)
     print(f"Loaded {len(instances)} instances")
 
-    _write_feature_stats(instances)
-    _write_temp_distribution(instances)
-    _write_mcu_summary(instances)
-    _plot_soh_trajectories(instances)
-    _plot_discharge_protocols()
-
-
-def _write_feature_stats(instances: list[DischargeInstance]) -> None:
+    # feature statistics table
     stats = StatisticsCalculator().compute(instances)
+    feature_rows = []
 
-    rows: list[list[str]] = []
     for key, display_name in FEATURE_DISPLAY_NAMES.items():
         s = stats.get(key)
-        if s is None:
-            continue
-        rows.append(
-            [display_name, f"{s['mean']:.4f}", f"{s['standard_deviation']:.4f}"]
-        )
+        if s is not None:
+            feature_rows.append(
+                TableRow(
+                    cells=[
+                        display_name,
+                        f"{s['mean']:.4f}",
+                        f"{s['standard_deviation']:.4f}",
+                    ]
+                )
+            )
 
-    (
-        LatexTableWriter(CONFERENCE_PATH / "feature_stats.tex")
-        .caption("FEATURE STATISTICS")
-        .label("tab:feature_stats")
-        .align("lcc")
-        .hline()
-        .header(["Feature", "Mean ($\\mu$)", "Std. Dev. ($\\sigma$)"])
-        .rows(rows)
-        .write()
-    )
+    LatexTable(
+        out_path=CONFERENCE_PATH / "feature_stats.tex",
+        caption="FEATURE STATISTICS",
+        label="tab:feature_stats",
+        align="lcc",
+        headers=["Feature", r"Mean ($\mu$)", r"Std. Dev. ($\sigma$)"],
+        items=feature_rows,
+    ).write()
 
+    # temperature distribution table
+    dist = DatasetAnalyzer.compute_temp_distribution(instances, PHASE_ORDER)
+    n = len(dist.temp_bands)
 
-def _write_temp_distribution(instances: list[DischargeInstance]) -> None:
-    counts: dict[tuple[str, int], int] = defaultdict(int)
-    for inst in instances:
-        counts[(inst.phase, inst.temp_center)] += 1
+    LatexTable(
+        out_path=CONFERENCE_PATH / "temp_distribution.tex",
+        caption="TEMPERATURE BAND DISTRIBUTION",
+        label="tab:temp_phase_matrix",
+        align="l" + "c" * n,
+        headers=["Phase", *[f"${tc}$" for tc in dist.temp_bands]],
+        items=[
+            *[
+                TableRow(cells=[label, *[str(c) for c in row_counts]])
+                for label, row_counts in zip(dist.phase_order, dist.matrix)
+            ],
+            HLine(),
+            TableRow(cells=["Total", *[str(t) for t in dist.col_totals]], bold=True),
+        ],
+    ).write()
 
-    temp_bands = sorted({tc for (_, tc) in counts})
-    n = len(temp_bands)
-    matrix = [
-        [counts.get((phase, tc), 0) for tc in temp_bands] for phase in PHASE_ORDER
-    ]
-    col_totals = [sum(matrix[i][j] for i in range(len(PHASE_ORDER))) for j in range(n)]
-
-    align = "l" + "c" * n
-    w = (
-        LatexTableWriter(CONFERENCE_PATH / "temp_distribution.tex")
-        .caption("TEMPERATURE BAND DISTRIBUTION")
-        .label("tab:temp_phase_matrix")
-        .align(align)
-        .hline()
-    )
-    w.row(
-        [rf"\multicolumn{{{n}}}{{c}}{{\textbf{{Temperature Bands ($^{{\circ}}$C)}}}}"]
-    )
-    w.row([r"\textbf{Phase}", *[f"${tc}$" for tc in temp_bands]])
-    for label, row_counts in zip(PHASE_ORDER, matrix):
-        w.row([label, *[str(c) for c in row_counts]])
-    w.bold_row([r"\textbf{Total}", *[str(t) for t in col_totals]])
-    w.write()
-
-
-def _write_mcu_summary(instances: list[DischargeInstance]) -> None:
-    by_mcu: dict[str, list[DischargeInstance]] = defaultdict(list)
-    for inst in instances:
-        mcu = inst.filepath.relative_to(HDF_ROOT).parts[0]
-        by_mcu[mcu].append(inst)
-
+    # mcu soh summary table
     fitter = SohCurveFitter(
         ref_temp_range=REFERENCE_TEMPERATURE_RANGE,
         ref_current_range=REFERENCE_CURRENT_RANGE,
     )
 
-    rows: list[list[str]] = []
-    for mcu_name, insts in by_mcu.items():
-        if not insts:
-            continue
-        records = [
-            (i.dci, i.soh, i.ambient_temperature, i.mean_neg_current) for i in insts
-        ]
-        ref_points = fitter.filter_reference(records)
-        if not ref_points:
-            print(f"[mcu-summary] {mcu_name}: no reference points, skipping.")
-            continue
-        soh_values = [p[1] for p in ref_points]
-        soh_range = f"${max(soh_values) * 100:.1f}$--${min(soh_values) * 100:.1f}$"
-        rows.append([mcu_name.replace("mcu", ""), soh_range, str(len(insts))])
+    mcu_summaries = DatasetAnalyzer.compute_mcu_summaries(instances, fitter)
 
-    (
-        LatexTableWriter(CONFERENCE_PATH / "mcu_soh_summary.tex")
-        .caption("MCU SOH RANGE AND CYCLE COUNT")
-        .label("tab:mcu_soh_summary")
-        .align("lcc")
-        .hline()
-        .header(["MCU", "SoH Range (\\%)", "Cycles"])
-        .rows(rows)
-        .write()
-    )
+    LatexTable(
+        out_path=CONFERENCE_PATH / "mcu_soh_summary.tex",
+        caption="MCU SOH RANGE AND CYCLE COUNT",
+        label="tab:mcu_soh_summary",
+        align="lcc",
+        headers=["MCU", r"SoH Range (\%)", "Cycles"],
+        items=[TableRow(cells=rec.to_latex_cells()) for rec in mcu_summaries],
+    ).write()
 
-
-def _plot_soh_trajectories(instances: list[DischargeInstance]) -> None:
-    fitter = SohCurveFitter(
-        ref_temp_range=REFERENCE_TEMPERATURE_RANGE,
-        ref_current_range=REFERENCE_CURRENT_RANGE,
-    )
-
-    by_mcu: dict[str, list[tuple[float, float, float, float]]] = defaultdict(list)
+    # soh trajectories plot
+    by_mcu = defaultdict(list)
     for inst in instances:
         mcu = inst.filepath.relative_to(HDF_ROOT).parts[0]
         by_mcu[mcu].append(
@@ -176,6 +135,7 @@ def _plot_soh_trajectories(instances: list[DischargeInstance]) -> None:
         records = by_mcu[mcu]
         if not records:
             continue
+
         fit = fitter.fit(records)
         if fit is None:
             print(f"  {mcu}: not enough reference points, skipping curve")
@@ -201,20 +161,20 @@ def _plot_soh_trajectories(instances: list[DischargeInstance]) -> None:
         y_min = min(traj_mins)
         padding = (1.05 - y_min) * 0.05
         ax.set_ylim(y_min - padding, 1.05)
+
     ax.set_xlabel("Discharge Cycles")
     ax.set_ylabel("SoH")
     ax.legend(fontsize=9, loc="best")
     ax.grid(True, alpha=0.3)
 
     CONFERENCE_PATH.mkdir(parents=True, exist_ok=True)
-    out = CONFERENCE_PATH / "soh_trajectories.pdf"
-    fig.savefig(out, bbox_inches="tight")
+    out_traj = CONFERENCE_PATH / "soh_trajectories.pdf"
+    fig.savefig(out_traj, bbox_inches="tight")
     plt.close(fig)
-    print(f"Plot saved -> {out}")
+    print(f"Plot saved -> {out_traj}")
 
-
-def _plot_discharge_protocols() -> None:
-    fig, axes = plt.subplots(2, 2, figsize=(8, 6), layout="constrained")
+    # discharge protocols plot
+    fig2, axes = plt.subplots(2, 2, figsize=(8, 6), layout="constrained")
     positions = [
         ("Constant", axes[0, 0]),
         ("Pulse", axes[0, 1]),
@@ -223,7 +183,7 @@ def _plot_discharge_protocols() -> None:
     ]
     panels = dict(_DISCHARGE_PROTOCOL_PANELS)
 
-    for name, ax in positions:
+    for name, ax2 in positions:
         filename = panels[name]
         path = _MCU_DIR / filename
         with h5py.File(path, "r") as f:
@@ -232,18 +192,23 @@ def _plot_discharge_protocols() -> None:
             ds = group[CURRENT_CHANNEL]
             assert isinstance(ds, h5py.Dataset)
             current = ds[:]
+
         if name == "Pulse":
             current = current[:_MAX_PULSE_STEPS]
-        time = np.arange(len(current))
-        ax.plot(time, current, linewidth=0.5, color="black")
-        ax.set_title(name, fontsize=10, fontweight="bold")
-        ax.set_xlabel("Time (s)", fontsize=8)
-        ax.set_ylabel("Current (A)", fontsize=8)
-        ax.tick_params(labelsize=7)
-        ax.grid(True, alpha=0.3)
 
-    CONFERENCE_PATH.mkdir(parents=True, exist_ok=True)
-    out = CONFERENCE_PATH / "discharge_protocols.pdf"
-    fig.savefig(out, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Plot saved -> {out}")
+        time = np.arange(len(current))
+        ax2.plot(time, current, linewidth=0.5, color="black")
+        ax2.set_title(name, fontsize=10, fontweight="bold")
+        ax2.set_xlabel("Time (s)", fontsize=8)
+        ax2.set_ylabel("Current (A)", fontsize=8)
+        ax2.tick_params(labelsize=7)
+        ax2.grid(True, alpha=0.3)
+
+    out_proto = CONFERENCE_PATH / "discharge_protocols.pdf"
+    fig2.savefig(out_proto, bbox_inches="tight")
+    plt.close(fig2)
+    print(f"Plot saved -> {out_proto}")
+
+
+if __name__ == "__main__":
+    main()

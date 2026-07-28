@@ -12,16 +12,6 @@ from voltgan.evaluation.metrics import PredictionResult
 from voltgan.models import SohEstimatorClient
 
 
-def aggregate_per_instance(
-    preds: np.ndarray, window_to_inst: list[int]
-) -> dict[int, float]:
-    """Average per-window predictions down to per-instance means."""
-    bucket: dict[int, list[float]] = defaultdict(list)
-    for i, inst_id in enumerate(window_to_inst):
-        bucket[inst_id].append(float(preds[i]))
-    return {inst_id: float(np.mean(v)) for inst_id, v in bucket.items()}
-
-
 class InferenceEngine:
     def __init__(
         self,
@@ -36,7 +26,19 @@ class InferenceEngine:
         self.soh_mean = stats[SOH_KEY]["mean"]
         self.soh_std = stats[SOH_KEY]["standard_deviation"]
 
-    def predict_tensors(self, X: torch.Tensor, conditions: torch.Tensor) -> np.ndarray:
+    @staticmethod
+    def aggregate_per_instance(
+        preds: np.ndarray, window_to_inst: list[int]
+    ) -> dict[int, float]:
+        """Average per-window predictions down to per-instance means."""
+        bucket: dict[int, list[float]] = defaultdict(list)
+        for i, inst_id in enumerate(window_to_inst):
+            bucket[inst_id].append(float(preds[i]))
+        return {inst_id: float(np.mean(v)) for inst_id, v in bucket.items()}
+
+    def run_batch_predictions(
+        self, X: torch.Tensor, conditions: torch.Tensor
+    ) -> np.ndarray:
         """Batched forward on raw (standardized) tensors; returns destandardized preds."""
         parts: list[np.ndarray] = []
         with torch.no_grad():
@@ -56,7 +58,7 @@ class InferenceEngine:
         all_preds: list[np.ndarray] = []
         with torch.no_grad():
             for batch_X, batch_cond, _ in loader:
-                pred = self.client.model(
+                pred = self.client(
                     batch_X.to(self.client.device),
                     batch_cond.to(self.client.device),
                 ).squeeze(-1)
@@ -66,7 +68,7 @@ class InferenceEngine:
         destd_preds = raw_preds * self.soh_std + self.soh_mean
 
         window_to_inst = [id(inst) for inst, _, _ in self.dataset.windows]
-        inst_preds = aggregate_per_instance(destd_preds, window_to_inst)
+        inst_preds = self.aggregate_per_instance(destd_preds, window_to_inst)
 
         seen: set[int] = set()
         results: list[PredictionResult] = []
@@ -79,4 +81,3 @@ class InferenceEngine:
             if preds is not None:
                 results.append(PredictionResult(inst, preds))
         return results
-

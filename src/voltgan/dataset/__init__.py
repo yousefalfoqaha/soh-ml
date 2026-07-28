@@ -1,3 +1,4 @@
+from .analysis import DatasetAnalyzer, McuSummaryRecord, TempDistributionMatrix
 from .bucket_sampler import BucketSampler
 from .discharge_dataset import DischargeDataset
 from .instance import DischargeInstance
@@ -14,4 +15,7 @@ __all__ = [
     "InstanceRepository",
     "SohCurveFitter",
     "StatisticsCalculator",
+    "DatasetAnalyzer",
+    "McuSummaryRecord",
+    "TempDistributionMatrix",
 ]

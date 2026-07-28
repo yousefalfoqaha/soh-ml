@@ -32,35 +32,27 @@ class MetricSet:
     r2: float | None
     pct_err: float
 
-    def cells(self, *, bold: bool = False) -> list[str]:
-        """Return 7 LaTeX-formatted cells: [label, SoH range, RMSE, MAE, R², %Err, Cycles]."""
+    def to_latex_cells(self) -> list[str]:
+        """Returns pure raw strings, zero styling logic."""
+        if self.cycles == 0:
+            return [self.label, "--", "--", "--", "--", "--", "0"]
+
         soh_inner = f"{self.soh_min * 100:.1f}$--${self.soh_max * 100:.1f}"
-        soh_body = f"${soh_inner}$"
         r2_str = f"{self.r2:.2f}" if self.r2 is not None else "--"
-        pct_str = f"{self.pct_err:.1f}" + r"\%"
 
-        if bold:
-            label_str = rf"\textbf{{{self.label}}}"
-            soh_str = rf"\textbf{{{soh_body}}}"
-            rmse_str = rf"$\mathbf{{{self.rmse:.3f}}}$"
-            mae_str = rf"$\mathbf{{{self.mae:.3f}}}$"
-            r2_full = rf"$\mathbf{{{r2_str}}}$" if r2_str != "--" else "--"
-            pct_full = rf"\textbf{{{pct_str}}}"
-            cyc_str = rf"\textbf{{{self.cycles}}}"
-        else:
-            label_str = self.label
-            soh_str = soh_body
-            rmse_str = f"{self.rmse:.3f}"
-            mae_str = f"{self.mae:.3f}"
-            r2_full = r2_str if r2_str == "--" else f"${r2_str}$"
-            pct_full = pct_str
-            cyc_str = str(self.cycles)
-
-        return [label_str, soh_str, rmse_str, mae_str, r2_full, pct_full, cyc_str]
+        return [
+            self.label,
+            f"${soh_inner}$",
+            f"{self.rmse:.3f}",
+            f"{self.mae:.3f}",
+            r2_str if r2_str == "--" else f"${r2_str}$",
+            f"{self.pct_err:.1f}\\%",
+            str(self.cycles),
+        ]
 
 
 class MetricsAggregator:
-    """Aggregates PredictionResults into statistical MetricSets."""
+    """Encapsulates aggregation of PredictionResults into statistical MetricSets."""
 
     @staticmethod
     def compute(label: str, results: list[PredictionResult]) -> MetricSet:
@@ -78,7 +70,6 @@ class MetricsAggregator:
 
         actuals = np.array([r.instance.soh for r in results])
         preds = np.array([r.predicted_soh for r in results])
-
         cycles = len(results)
         r2 = float(r2_score(actuals, preds)) if cycles >= 2 else None
 
@@ -99,13 +90,9 @@ class MetricsAggregator:
         results: list[PredictionResult],
         group_fn: Callable[[PredictionResult], Any],
     ) -> list[MetricSet]:
-        """Groups results dynamically and computes a MetricSet for each group."""
         groups = defaultdict(list)
         for r in results:
             groups[group_fn(r)].append(r)
-
-        metrics = []
-        for key in sorted(groups.keys()):
-            metrics.append(cls.compute(label=str(key), results=groups[key]))
-
-        return metrics
+        return [
+            cls.compute(label=str(key), results=groups[key]) for key in sorted(groups)
+        ]
