@@ -230,21 +230,9 @@ class WuppertalIngestor(DatasetIngestor):
                 cycle_index += 1
                 continue
 
-            start_t, end_t = max(w.start, df.index[0]), min(w.end, df.index[-1])
-            idf = df.loc[start_t:end_t]
-            orig_idx = idf.index.to_numpy() - start_t
-            if not len(orig_idx):
+            resampled, new_idx = self._resample_window(df, w)
+            if resampled is None or new_idx is None:
                 continue
-
-            new_idx = np.arange(0, float(orig_idx[-1]) + self.raster, self.raster)
-            new_idx = new_idx[new_idx <= float(orig_idx[-1])]
-            if len(new_idx) < self.min_seq_len:
-                continue
-
-            resampled = {
-                ch: np.interp(new_idx, orig_idx, idf[ch].to_numpy())
-                for ch in idf.columns
-            }
 
             self.repo.save(
                 cell_id=mcu,
@@ -267,3 +255,20 @@ class WuppertalIngestor(DatasetIngestor):
             cycle_index += 1
 
         return cycle_index
+
+    def _resample_window(self, df, w: Window):
+        start_t, end_t = max(w.start, df.index[0]), min(w.end, df.index[-1])
+        idf = df.loc[start_t:end_t]
+        orig_idx = idf.index.to_numpy() - start_t
+        if not len(orig_idx):
+            return None, None
+
+        new_idx = np.arange(0, float(orig_idx[-1]) + self.raster, self.raster)
+        new_idx = new_idx[new_idx <= float(orig_idx[-1])]
+        if len(new_idx) < self.min_seq_len:
+            return None, None
+
+        resampled = {
+            ch: np.interp(new_idx, orig_idx, idf[ch].to_numpy()) for ch in idf.columns
+        }
+        return resampled, new_idx
