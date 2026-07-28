@@ -15,14 +15,14 @@ class FileDiscoverer:
                 paths.extend(
                     [
                         p
-                        for p in target.rglob("*")
+                        for p in sorted(target.rglob("*"))
                         if p.is_file() and p.suffix.lower() in exts
                     ]
                 )
         return paths
 
     @staticmethod
-    def sort_wuppertal(path: Path) -> datetime:
+    def parse_datetime(path: Path) -> datetime:
         m = _DATETIME_PATTERN.search(path.name)
         if not m:
             raise ValueError(f"Cannot parse date-time from filename: {path.name}")

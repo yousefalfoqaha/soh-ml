@@ -9,7 +9,6 @@ import numpy as np
 @dataclass
 class DischargeInstance:
     filepath: Path
-    n_samples: int
     cell_id: str
     provider: str
     soh: float
@@ -30,6 +29,9 @@ class DischargeInstance:
         if self._data is None:
             self._data = self._data_loader()
         return self._data
+
+    def __len__(self) -> int:
+        return len(self.data)
 
     @property
     def voltage(self) -> np.ndarray:

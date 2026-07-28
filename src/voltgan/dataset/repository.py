@@ -11,7 +11,6 @@ import numpy as np
 from voltgan.config import (
     CURRENT_CHANNEL,
     HDF_ROOT,
-    MAX_SEQUENCE_LENGTH,
     TEMPERATURE_CHANNEL,
     VOLTAGE_CHANNEL,
 )
@@ -20,8 +19,9 @@ from voltgan.utils.discover import FileDiscoverer
 
 
 class _HDFDataLoader:
-    def __init__(self, filepath: Path):
+    def __init__(self, filepath: Path, max_length: int | None = None):
         self.filepath = filepath
+        self.max_length = max_length
 
     def __call__(self) -> np.ndarray:
         with h5py.File(self.filepath, "r") as f:
@@ -33,35 +33,37 @@ class _HDFDataLoader:
                     cast(h5py.Dataset, group[TEMPERATURE_CHANNEL])[:],
                 ]
             ).T.astype(np.float32)
-        return data[:MAX_SEQUENCE_LENGTH]
+
+        if self.max_length is not None:
+            return data[: self.max_length]
+        return data
 
 
 class InstanceRepository:
     def __init__(self, provider: str):
         self.provider = provider
-        self.root = HDF_ROOT / provider
+        self._root = HDF_ROOT / provider
 
-    def _create_data_loader(self, filepath: Path) -> Callable[[], np.ndarray]:
-        return _HDFDataLoader(filepath)
+    def _create_data_loader(
+        self, filepath: Path, max_length: int | None
+    ) -> Callable[[], np.ndarray]:
+        return _HDFDataLoader(filepath, max_length)
 
-    def load(self, cells: list[str]) -> list[DischargeInstance]:
-        paths = FileDiscoverer.find(self.root, cells, (".hdf",))
+    def load(
+        self, cells: list[str], max_length: int | None = None
+    ) -> list[DischargeInstance]:
+        paths = FileDiscoverer.find(self._root, cells, (".hdf",))
         instances = []
 
         for p in paths:
             with h5py.File(p, "r") as f:
-                group = cast(h5py.Group, f[p.name])
                 attrs = f.attrs
-
                 d_rate = attrs.get("discharge_rate")
                 split = attrs.get("split")
                 c_soh = attrs.get("curve_soh")
 
-                volt_ds = cast(h5py.Dataset, group[VOLTAGE_CHANNEL])
-
                 inst = DischargeInstance(
                     filepath=p,
-                    n_samples=len(volt_ds),
                     cell_id=str(attrs.get("cell_id", "")),
                     provider=str(attrs.get("provider", "")),
                     soh=float(attrs.get("soh", 0.0)),
@@ -75,19 +77,19 @@ class InstanceRepository:
                     else None,
                     split=str(split) if split not in (None, "None") else None,
                     dci=float(attrs.get("discharge_cycle_index", 0)),
-                    _data_loader=self._create_data_loader(p),
+                    _data_loader=self._create_data_loader(p, max_length),
                 )
                 instances.append(inst)
 
         return instances
 
     def exists(self, cell_id: str, filename: str) -> bool:
-        return (self.root / cell_id / filename).exists()
+        return (self._root / cell_id / filename).exists()
 
     def save(
         self, cell_id: str, filename: str, data: dict[str, np.ndarray], metadata: dict
     ) -> None:
-        filepath = self.root / cell_id / filename
+        filepath = self._root / cell_id / filename
         filepath.parent.mkdir(parents=True, exist_ok=True)
 
         with h5py.File(filepath, "w") as f:

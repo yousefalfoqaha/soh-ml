@@ -30,7 +30,7 @@ from voltgan.utils import HLine, LatexTable, TableRow
 _DISCHARGE_PROTOCOL_PANELS = [
     (
         "Constant",
-        "ChDch2 2024-10-22_05.31.47 Pulse_Test_SamsungINR2170050E_Cell 5 Zelltester_1.hdf",
+        "/mnt/ssd/datasets/wuppertal/hdf/wuppertal/mcu5/Cyc026_Initial_Constant_1.0C_Temp25_20241022.hdf",
     ),
     (
         "Pulse",

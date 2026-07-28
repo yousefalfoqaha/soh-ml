@@ -18,12 +18,14 @@ from voltgan.config import (
     PHASE_ORDER,
     PROTOCOL_ORDER,
     RANDOM_SEED,
+    REFERENCE_DISCHARGE_RATE,
+    REFERENCE_TEMPERATURE,
     STATS_PATH,
     TESTING_MCUS,
     VALIDATION_MCUS,
     WUPPERTAL_PROVIDER,
 )
-from voltgan.dataset import EstimatorDataset, InstanceRepository
+from voltgan.dataset import EstimatorDataset, InstanceRepository, SohCurveFitter
 from voltgan.evaluation import InferenceEngine
 from voltgan.evaluation.metrics import MetricsAggregator
 from voltgan.evaluation.pfi import FeatureSpec, PermutationImportanceEvaluator
@@ -240,9 +242,90 @@ def main() -> None:
     plt.close(fig)
     print(f"Chart saved -> {out}")
 
-    oxford_repo = InstanceRepository(provider=OXFORD_PROVIDER)
+    # validation trajectory plotting
+    val_results = [r for r in results if r.instance.cell_id in VALIDATION_MCUS]
+    if val_results:
+        fitter = SohCurveFitter(
+            reference_temperature=REFERENCE_TEMPERATURE,
+            reference_discharge_rate=REFERENCE_DISCHARGE_RATE,
+        )
+
+        # Deduplicate instances (since multiple windows belong to one instance)
+        val_instances_unique = list(
+            {r.instance.filepath: r.instance for r in val_results}.values()
+        )
+
+        records = [
+            (inst.dci, inst.soh, inst.ambient_temperature, inst.discharge_rate)
+            for inst in val_instances_unique
+        ]
+
+        fit_result = fitter.fit(records)
+
+        if fit_result is not None:
+            print(
+                f"Loaded {len(fit_result.ref_points)} reference points from {VALIDATION_MCUS}"
+            )
+
+            fig, ax = plt.subplots(figsize=(8, 4.5), layout="constrained")
+
+            ref_dci = np.array([p[0] for p in fit_result.ref_points], dtype=float)
+            pred_dci = np.array([r.instance.dci for r in val_results], dtype=float)
+
+            # Safely extract predictions depending on InferenceEngine result structure
+            pred_soh = np.array(
+                [
+                    getattr(
+                        r,
+                        "prediction",
+                        getattr(r, "predicted_soh", getattr(r, "pred", 0.0)),
+                    )
+                    for r in val_results
+                ],
+                dtype=float,
+            )
+
+            min_dci = float(ref_dci.min())
+            max_dci = float(max(ref_dci.max(), pred_dci.max()))
+            dense_dci = np.linspace(min_dci, max_dci, 500)
+            dense_soh = np.clip(
+                [fit_result.model(float(t)) for t in dense_dci], 0.0, 1.0
+            )
+
+            ax.plot(
+                dense_dci,
+                dense_soh,
+                color="tab:blue",
+                lw=2,
+                label="Real (Fitted) SoH",
+                zorder=2,
+            )
+
+            ax.scatter(
+                pred_dci,
+                pred_soh,
+                s=30,
+                color="tab:red",
+                alpha=0.7,
+                label="Predicted SoH",
+                zorder=3,
+                edgecolors="none",
+            )
+
+            ax.set_xlabel("Discharge Cycles")
+            ax.set_ylabel("SoH")
+            ax.legend(fontsize=9, loc="best")
+            ax.grid(True, alpha=0.3)
+
+            out_traj = CONFERENCE_PATH / "val_trajectory.pdf"
+            fig.savefig(out_traj, bbox_inches="tight")
+            plt.close(fig)
+            print(f"Plot saved -> {out_traj}")
+        else:
+            print("Not enough reference points to fit SoH curve for trajectory plot.")
 
     # oxford zero-shot results
+    oxford_repo = InstanceRepository(provider=OXFORD_PROVIDER)
     oxford_instances = oxford_repo.load(OXFORD_MCUS)
     print(f"Loaded {len(oxford_instances)} Oxford instances")
 

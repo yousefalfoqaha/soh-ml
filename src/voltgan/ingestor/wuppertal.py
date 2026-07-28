@@ -40,7 +40,6 @@ class WuppertalIngestor(DatasetIngestor):
 
     def ingest(self) -> None:
         files = FileDiscoverer.find(self.raw_dir, self._mcus, (".mf4",))
-        files.sort(key=FileDiscoverer.sort_wuppertal)
 
         for mcu in self._mcus:
             dci = 0
@@ -202,7 +201,7 @@ class WuppertalIngestor(DatasetIngestor):
             return cycle_index
 
         df = mdf.to_dataframe(channels=CHANNELS, raster=None, time_from_zero=False)
-        dt = FileDiscoverer.sort_wuppertal(source_path)
+        dt = FileDiscoverer.parse_datetime(source_path)
         phase = (
             "Initial"
             if dt < AGING_START

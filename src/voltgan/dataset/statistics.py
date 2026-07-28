@@ -38,7 +38,7 @@ class StatisticsCalculator:
         soh_values: list[float] = []
 
         for inst in instances:
-            n_rows = inst.n_samples
+            n_rows = len(inst)
             if n_rows == 0:
                 continue
 

@@ -10,6 +10,7 @@ from voltgan.config import (
     BATCH_SIZE,
     ESTIMATOR_CHECKPOINT_PATH,
     LEARNING_RATE,
+    MAX_SEQUENCE_LENGTH,
     N_EPOCHS,
     RANDOM_SEED,
     STATS_PATH,
@@ -38,15 +39,14 @@ def _worker_init(worker_id):
 
 
 def main() -> None:
-
     torch.manual_seed(RANDOM_SEED)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
     wuppertal_repo = InstanceRepository(provider=WUPPERTAL_PROVIDER)
-    train_instances = wuppertal_repo.load(TRAINING_MCUS)
+    train_instances = wuppertal_repo.load(TRAINING_MCUS, max_length=MAX_SEQUENCE_LENGTH)
     val_mcus = VALIDATION_MCUS + TESTING_MCUS
-    val_instances = wuppertal_repo.load(val_mcus)
+    val_instances = wuppertal_repo.load(val_mcus, max_length=MAX_SEQUENCE_LENGTH)
 
     with open(STATS_PATH) as f:
         stats = json.load(f)
@@ -109,6 +109,9 @@ def main() -> None:
 
         client.train()
         for X, conditions, y in training_loader:
+            if _interrupted:
+                break
+
             X = X.to(device, non_blocking=True)
             conditions = conditions.to(device, non_blocking=True)
             y = y.to(device, non_blocking=True)
@@ -120,12 +123,19 @@ def main() -> None:
             total_train_loss += loss.item()
             optimizer.step()
 
+        if _interrupted:
+            break
+
         client.eval()
         with torch.no_grad():
             for X, conditions, y in validation_loader:
+                if _interrupted:
+                    break
+
                 X = X.to(device, non_blocking=True)
                 conditions = conditions.to(device, non_blocking=True)
                 y = y.to(device, non_blocking=True)
+
                 y_pred = client(X, conditions)
                 loss = criterion(y_pred, y)
                 total_val_loss += loss.item()
