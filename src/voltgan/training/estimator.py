@@ -12,14 +12,22 @@ from voltgan.config import (
     LEARNING_RATE,
     MAX_SEQUENCE_LENGTH,
     N_EPOCHS,
+    PHASE_ORDER,
     RANDOM_SEED,
+    REFERENCE_DISCHARGE_RATE,
+    REFERENCE_TEMPERATURE,
     STATS_PATH,
     TESTING_MCUS,
     TRAINING_MCUS,
     VALIDATION_MCUS,
     WUPPERTAL_PROVIDER,
 )
-from voltgan.dataset import EstimatorDataset, InstanceRepository
+from voltgan.dataset import (
+    DatasetAnalyzer,
+    EstimatorDataset,
+    InstanceRepository,
+    SohCurveFitter,
+)
 from voltgan.models import SohEstimatorClient
 
 _interrupted = False
@@ -38,21 +46,80 @@ def _worker_init(worker_id):
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
+def _print_dataset_diagnostics(name: str, instances: list, dataset: EstimatorDataset):
+    total_samples = sum(len(inst) for inst in instances)
+    avg_len = total_samples / max(len(instances), 1)
+
+    print(f"\n--- {name} Diagnostics ---")
+    print(f"Total Instances (Files): {len(instances)}")
+    print(f"Total Sequence Length (Sum of rows): {total_samples:,}")
+    print(f"Average Length per Instance: {avg_len:,.1f} rows")
+    print(f"Total Windows Generated (for DataLoader): {len(dataset):,}")
+    print("-" * 25)
+
+
+def _print_validation_stats(val_instances: list):
+    print("\n" + "=" * 55)
+    print(" VALIDATION SET DETAILED STATISTICS")
+    print("=" * 55)
+
+    # 1. Temperature Distribution
+    dist = DatasetAnalyzer.compute_temp_distribution(val_instances, PHASE_ORDER)
+    print("\n--- Temperature Band Distribution ---")
+    header = f"{'Phase':<15} | " + " | ".join(f"{tc:^5}C" for tc in dist.temp_bands)
+    print(header)
+    print("-" * len(header))
+    for phase, row_counts in zip(dist.phase_order, dist.matrix):
+        counts_str = " | ".join(f"{c:^6}" for c in row_counts)
+        print(f"{phase:<15} | {counts_str}")
+    print("-" * len(header))
+    totals_str = " | ".join(f"{t:^6}" for t in dist.col_totals)
+    print(f"{'Total':<15} | {totals_str}")
+
+    # 2. MCU Summaries
+    fitter = SohCurveFitter(
+        reference_temperature=REFERENCE_TEMPERATURE,
+        reference_discharge_rate=REFERENCE_DISCHARGE_RATE,
+    )
+    summaries = DatasetAnalyzer.compute_mcu_summaries(val_instances, fitter)
+    print("\n--- MCU SoH Range & Cycles ---")
+    print(f"{'MCU':<10} | {'SoH Range':<15} | {'Cycles':<10}")
+    print("-" * 45)
+    for rec in summaries:
+        soh_range = f"{rec.soh_max * 100:.1f}% - {rec.soh_min * 100:.1f}%"
+        print(f"{rec.mcu_id:<10} | {soh_range:<15} | {rec.cycles:<10}")
+    print("=" * 55 + "\n")
+
+
 def main() -> None:
     torch.manual_seed(RANDOM_SEED)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
     wuppertal_repo = InstanceRepository(provider=WUPPERTAL_PROVIDER)
+
+    print("\nLoading Training Data...")
     train_instances = wuppertal_repo.load(TRAINING_MCUS, max_length=MAX_SEQUENCE_LENGTH)
+    # Force absolute deterministic ordering
+    train_instances.sort(key=lambda inst: inst.filepath.name)
+
+    print("Loading Validation Data...")
     val_mcus = VALIDATION_MCUS + TESTING_MCUS
     val_instances = wuppertal_repo.load(val_mcus, max_length=MAX_SEQUENCE_LENGTH)
+    # Force absolute deterministic ordering
+    val_instances.sort(key=lambda inst: inst.filepath.name)
+
+    # Print the specific validation statistics you requested
+    _print_validation_stats(val_instances)
 
     with open(STATS_PATH) as f:
         stats = json.load(f)
 
     training_dataset = EstimatorDataset(instances=train_instances, stats=stats)
     validation_dataset = EstimatorDataset(instances=val_instances, stats=stats)
+
+    _print_dataset_diagnostics("Training", train_instances, training_dataset)
+    _print_dataset_diagnostics("Validation", val_instances, validation_dataset)
 
     training_loader = DataLoader(
         training_dataset,
@@ -88,7 +155,7 @@ def main() -> None:
     patience = 50
 
     print(
-        f"Train batches: {len(training_loader)} | "
+        f"\nTrain batches: {len(training_loader)} | "
         f"Validation batches: {len(validation_loader)}"
     )
     print(
@@ -177,3 +244,7 @@ def main() -> None:
 
     torch.save(client.model.state_dict(), ESTIMATOR_CHECKPOINT_PATH)
     print(f"Model saved -> {ESTIMATOR_CHECKPOINT_PATH}")
+
+
+if __name__ == "__main__":
+    main()

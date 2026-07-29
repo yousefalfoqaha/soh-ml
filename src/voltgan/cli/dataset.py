@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from pathlib import Path
 
 import matplotlib
 
@@ -119,15 +120,7 @@ def main() -> None:
     # soh trajectories plot
     by_mcu = defaultdict(list)
     for instance in instances:
-        mcu = instance.cell_id
-        by_mcu[mcu].append(
-            (
-                instance.dci,
-                instance.soh,
-                instance.ambient_temperature,
-                instance.discharge_rate,
-            )
-        )
+        by_mcu[instance.cell_id].append(instance)
 
     mcus = sorted(by_mcu)
     colors = plt.get_cmap("tab10")
@@ -135,16 +128,16 @@ def main() -> None:
     traj_mins: list[float] = []
 
     for i, mcu in enumerate(mcus):
-        records = by_mcu[mcu]
-        if not records:
+        mcu_instances = by_mcu[mcu]
+        if not mcu_instances:
             continue
 
-        fit = fitter.fit(records)
+        fit = fitter.fit(mcu_instances)
         if fit is None:
             print(f"  {mcu}: not enough reference points, skipping curve")
             continue
 
-        all_cycle_index = np.array([r[0] for r in records], dtype=float)
+        all_cycle_index = np.array([inst.dci for inst in mcu_instances], dtype=float)
         min_cycle_index = float(all_cycle_index.min())
         max_cycle_index = float(all_cycle_index.max())
         dense_cycle_index = np.linspace(min_cycle_index, max_cycle_index, 500)
@@ -156,7 +149,7 @@ def main() -> None:
             color=colors(i % 10),
             lw=1.5,
             alpha=0.85,
-            label=f"{mcu} ({len(records)} files)",
+            label=f"{mcu} ({len(mcu_instances)} files)",
         )
         traj_mins.append(float(np.min(dense_soh)))
 
@@ -187,11 +180,13 @@ def main() -> None:
     panels = dict(_DISCHARGE_PROTOCOL_PANELS)
 
     for name, ax2 in positions:
-        filename = panels[name]
-        instance = next((i for i in instances if i.filepath.name == filename), None)
+        filename_str = panels[name]
+        target_name = Path(filename_str).name
+
+        instance = next((i for i in instances if i.filepath.name == target_name), None)
 
         if not instance:
-            print(f"Warning: Panel file {filename} not found in loaded instances.")
+            print(f"Warning: Panel file {target_name} not found in loaded instances.")
             continue
 
         current = instance.current

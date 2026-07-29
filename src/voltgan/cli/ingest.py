@@ -49,7 +49,7 @@ def main() -> None:
         repo=oxford_repo,
     ).ingest()
 
-    print("\n--- Calculating Statistics ---")
+    print("\n--- Calculating Training Statistics ---")
     training_instances = wuppertal_repo.load(TRAINING_MCUS)
     train_stats = StatisticsCalculator(save_path=STATS_PATH)
     train_stats.compute(training_instances)

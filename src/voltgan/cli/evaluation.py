@@ -250,11 +250,8 @@ def main() -> None:
             reference_discharge_rate=REFERENCE_DISCHARGE_RATE,
         )
 
-        val_instances_unique = list(
-            {r.instance.filepath: r.instance for r in val_results}.values()
-        )
-
-        fit_result = fitter.fit(val_instances_unique)
+        val_instances = repo.load(VALIDATION_MCUS)
+        fit_result = fitter.fit(val_instances)
 
         if fit_result is not None:
             print(
@@ -266,6 +263,7 @@ def main() -> None:
             ref_dci = np.array([p[0] for p in fit_result.ref_points], dtype=float)
             pred_dci = np.array([r.instance.dci for r in val_results], dtype=float)
 
+            # Safely extract predictions depending on InferenceEngine result structure
             pred_soh = np.array(
                 [
                     getattr(
