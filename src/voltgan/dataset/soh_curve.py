@@ -4,6 +4,9 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import curve_fit
 
+from voltgan.dataset.instance import DischargeInstance
+from voltgan.dataset.repository import InstanceRepository
+
 
 @dataclass(frozen=True)
 class CurveFitResult:
@@ -35,34 +38,33 @@ class SohCurveFitter:
         return a + b * x + c * x**2 + d * x**3 + e * x**4
 
     def filter_reference(
-        self, records: list[tuple[float, float, float, float | None]]
-    ) -> list[tuple[float, float]]:
-        """Return (dci, soh) pairs passing the temperature and discharge rate filters."""
+        self, instances: list[DischargeInstance]
+    ) -> list[DischargeInstance]:
+        """Return instances passing temperature, rate, and protocol filters."""
         t_lo, t_hi = self._reference_temperature_range
         return [
-            (r[0], r[1])
-            for r in records
-            if not np.isnan(r[1])
-            and (t_lo <= r[2] <= t_hi)
-            and (r[3] is not None)
-            and abs(r[3] - self.reference_discharge_rate) < 0.15
+            inst
+            for inst in instances
+            if not np.isnan(inst.soh)
+            and (t_lo <= inst.ambient_temperature <= t_hi)
+            and (inst.discharge_rate is not None)
+            and abs(inst.discharge_rate - self.reference_discharge_rate) < 0.15
+            and inst.protocol == "Constant"
         ]
 
-    def fit(
-        self, records: list[tuple[float, float, float, float | None]]
-    ) -> CurveFitResult | None:
+    def fit(self, instances: list[DischargeInstance]) -> CurveFitResult | None:
         """
-        Expects records as (dci, soh, ambient_temperature, discharge_rate).
+        Fits a degradation curve using valid reference points from the instances.
         Returns a CurveFitResult if enough reference points are found.
         """
-        ref_points = self.filter_reference(records)
+        ref_instances = self.filter_reference(instances)
 
-        if len(ref_points) < 5:
+        if len(ref_instances) < 5:
             return None
 
-        ref_points.sort(key=lambda p: p[0])
-        dci = np.array([p[0] for p in ref_points], dtype=float)
-        soh = np.array([p[1] for p in ref_points], dtype=float)
+        ref_instances.sort(key=lambda inst: inst.dci)
+        dci = np.array([inst.dci for inst in ref_instances], dtype=float)
+        soh = np.array([inst.soh for inst in ref_instances], dtype=float)
 
         popt, _ = curve_fit(
             self._poly4, dci, soh, p0=[soh[0], -0.001, -1e-5, 1e-7, 1e-9]
@@ -73,10 +75,31 @@ class SohCurveFitter:
 
         return CurveFitResult(
             model=model,
-            ref_points=ref_points,
+            ref_points=[(float(d), float(s)) for d, s in zip(dci, soh)],
             rmse=rmse,
             start_dci=float(dci[0]),
             end_dci=float(dci[-1]),
             start_soh=float(model(float(dci[0]))),
             end_soh=float(model(float(dci[-1]))),
         )
+
+    def apply(self, repo: InstanceRepository, mcus: list[str]) -> None:
+        """Loads instances from the repo, fits the curves, and updates the HDF metadata."""
+        for mcu in mcus:
+            instances = repo.load([mcu])
+            if not instances:
+                continue
+
+            fit_result = self.fit(instances)
+
+            if not fit_result:
+                print(f"[{mcu}] Skipped curve fitting - insufficient reference points.")
+                continue
+
+            print(
+                f"[{mcu}] Fitted deg4 curve | {len(fit_result.ref_points)} pts | RMSE: {fit_result.rmse:.5f}"
+            )
+
+            for inst in instances:
+                fitted_soh = min(max(float(fit_result.model(inst.dci)), 0.0), 1.0)
+                repo.update_metadata(inst.filepath, {"curve_soh": fitted_soh})

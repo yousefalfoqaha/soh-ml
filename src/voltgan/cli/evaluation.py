@@ -13,6 +13,7 @@ import torch
 from voltgan.config import (
     CONFERENCE_PATH,
     ESTIMATOR_CHECKPOINT_PATH,
+    MAX_SEQUENCE_LENGTH,
     OXFORD_MCUS,
     OXFORD_PROVIDER,
     PHASE_ORDER,
@@ -22,6 +23,7 @@ from voltgan.config import (
     REFERENCE_TEMPERATURE,
     STATS_PATH,
     TESTING_MCUS,
+    TRAINING_MCUS,
     VALIDATION_MCUS,
     WUPPERTAL_PROVIDER,
 )
@@ -63,10 +65,9 @@ def main() -> None:
     repo = InstanceRepository(provider=WUPPERTAL_PROVIDER)
 
     # initialize and run base estimator
-    instances = repo.load(VALIDATION_MCUS + TESTING_MCUS)
-    print(
-        f"Loaded {len(instances)} valid/test instances from {VALIDATION_MCUS + TESTING_MCUS}"
-    )
+    mcus = VALIDATION_MCUS + TESTING_MCUS
+    instances = repo.load(mcus, max_length=MAX_SEQUENCE_LENGTH)
+    print(f"Loaded {len(instances)} valid/test instances from {mcus}")
 
     dataset = EstimatorDataset(instances, stats)
     engine = InferenceEngine(client=client, dataset=dataset, stats=stats)

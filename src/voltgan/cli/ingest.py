@@ -9,7 +9,9 @@ from voltgan.config import (
     REFERENCE_DISCHARGE_RATE,
     REFERENCE_TEMPERATURE,
     STATS_PATH,
+    TESTING_MCUS,
     TRAINING_MCUS,
+    VALIDATION_MCUS,
     WUPPERTAL_PROVIDER,
 )
 from voltgan.dataset import InstanceRepository, SohCurveFitter, StatisticsCalculator
@@ -33,8 +35,12 @@ def main() -> None:
         raster=RASTER_FREQUENCY,
         min_seq_len=MIN_SEQUENCE_LENGTH,
         repo=wuppertal_repo,
-        fitter=fitter,
     ).ingest()
+
+    print("\n--- Applying SOH Degradation Curves ---")
+    fitter.apply(
+        repo=wuppertal_repo, mcus=TRAINING_MCUS + VALIDATION_MCUS + TESTING_MCUS
+    )
 
     print("\n--- Ingesting Oxford Data ---")
     OxfordIngestor(

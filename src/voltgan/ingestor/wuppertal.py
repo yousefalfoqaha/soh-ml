@@ -16,7 +16,6 @@ from voltgan.config import (
     WUPPERTAL_PROVIDER,
 )
 from voltgan.dataset.repository import InstanceRepository
-from voltgan.dataset.soh_curve import SohCurveFitter
 from voltgan.ingestor.base import DatasetIngestor, Window
 from voltgan.utils.discover import FileDiscoverer
 
@@ -28,14 +27,12 @@ class WuppertalIngestor(DatasetIngestor):
         raster: float,
         min_seq_len: int,
         repo: InstanceRepository,
-        fitter: SohCurveFitter,
     ):
         self.raw_dir = mf4_dir
         self._mcus = TRAINING_MCUS + VALIDATION_MCUS + TESTING_MCUS
         self.raster = raster
         self.min_seq_len = min_seq_len
         self.repo = repo
-        self.fitter = fitter
         self.amb_temp_ch = "ClimaTemp"
 
     def ingest(self) -> None:
@@ -49,31 +46,6 @@ class WuppertalIngestor(DatasetIngestor):
 
             for mf4_path in mcu_files:
                 dci = self._process_file(mf4_path, dci, mcu)
-
-            self._apply_soh_curve(mcu)
-
-    def _apply_soh_curve(self, mcu: str) -> None:
-        instances = self.repo.load([mcu])
-        if not instances:
-            return
-
-        records = [
-            (inst.dci, inst.soh, inst.ambient_temperature, inst.discharge_rate)
-            for inst in instances
-        ]
-
-        fit_result = self.fitter.fit(records)
-        if not fit_result:
-            print(f"[{mcu}] Skipped curve fitting - insufficient reference points.")
-            return
-
-        print(
-            f"[{mcu}] Fitted deg4 curve | {len(fit_result.ref_points)} pts | RMSE: {fit_result.rmse:.5f}"
-        )
-
-        for inst in instances:
-            fitted_soh = min(max(float(fit_result.model(inst.dci)), 0.0), 1.0)
-            self.repo.update_metadata(inst.filepath, {"curve_soh": fitted_soh})
 
     def _process_file(self, mf4_path: Path, dci: int, mcu: str) -> int:
         req_channels = CHANNELS + [self.amb_temp_ch]

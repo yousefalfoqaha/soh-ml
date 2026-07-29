@@ -47,6 +47,8 @@ class EstimatorDataset(torch.utils.data.Dataset):
             for start in range(0, len(instance.data) - WINDOW_SIZE + 1, stride):
                 self.windows.append((instance, start, start + WINDOW_SIZE))
 
+        print(f"Loaded {len(self.windows)} windows from {len(instances)} instances.")
+
     def __len__(self) -> int:
         return len(self.windows)
 
