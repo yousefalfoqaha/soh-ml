@@ -23,7 +23,6 @@ from voltgan.config import (
     REFERENCE_TEMPERATURE,
     STATS_PATH,
     TESTING_MCUS,
-    TRAINING_MCUS,
     VALIDATION_MCUS,
     WUPPERTAL_PROVIDER,
 )
@@ -251,17 +250,11 @@ def main() -> None:
             reference_discharge_rate=REFERENCE_DISCHARGE_RATE,
         )
 
-        # Deduplicate instances (since multiple windows belong to one instance)
         val_instances_unique = list(
             {r.instance.filepath: r.instance for r in val_results}.values()
         )
 
-        records = [
-            (inst.dci, inst.soh, inst.ambient_temperature, inst.discharge_rate)
-            for inst in val_instances_unique
-        ]
-
-        fit_result = fitter.fit(records)
+        fit_result = fitter.fit(val_instances_unique)
 
         if fit_result is not None:
             print(
@@ -273,7 +266,6 @@ def main() -> None:
             ref_dci = np.array([p[0] for p in fit_result.ref_points], dtype=float)
             pred_dci = np.array([r.instance.dci for r in val_results], dtype=float)
 
-            # Safely extract predictions depending on InferenceEngine result structure
             pred_soh = np.array(
                 [
                     getattr(

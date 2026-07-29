@@ -71,15 +71,13 @@ class DatasetAnalyzer:
             if not insts:
                 continue
 
-            raw_records = [
-                (i.dci, i.soh, i.ambient_temperature, i.discharge_rate) for i in insts
-            ]
-            ref_points = fitter.filter_reference(raw_records)
+            ref_instances = fitter.filter_reference(insts)
 
-            if not ref_points:
+            if not ref_instances:
                 continue
 
-            soh_values = [p[1] for p in ref_points]
+            soh_values = [inst.soh for inst in ref_instances]
+
             records.append(
                 McuSummaryRecord(
                     mcu_id=mcu_name,
