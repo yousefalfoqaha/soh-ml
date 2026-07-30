@@ -9,10 +9,7 @@ Commands:
   ingest                      Run data ingestion pipeline (Wuppertal + Oxford)
   dataset                     Generate dataset statistics tables and figures
   evaluation                  Run estimator evaluation + PFI + Oxford tables/charts
-  train <estimator|generator|generator-mse>
-                              Train a model
-  infer generator <hdf-rel-path> [--soh=..] [--ambient=..]
-                              Run generator inference on an HDF file
+  train                       Train a model
   inspect <hdf-rel-path>      Inspect structure and contents of an HDF file
 """
 
@@ -23,8 +20,6 @@ def _main() -> None:
         sys.exit(1)
 
     command = sys.argv[1]
-
-    # Remove the top-level command only
     sys.argv = [sys.argv[0], *sys.argv[2:]]
 
     match command:

@@ -18,7 +18,7 @@ CONFERENCE_PATH = PROJECT_ROOT / "conference"
 WUPPERTAL_PROVIDER = "wuppertal"
 OXFORD_PROVIDER = "oxford"
 
-RANDOM_SEED = 42
+RANDOM_SEED = 69
 
 MAX_SEQUENCE_LENGTH = 30000
 MIN_SEQUENCE_LENGTH = 1000
@@ -42,9 +42,9 @@ REFERENCE_DISCHARGE_RATE = 1.0
 
 LEAVE_OUT_TEMPERATURE_RANGE = (-2.0, 2.0)
 
-TRAINING_MCUS = ["mcu1", "mcu2", "mcu7", "mcu4", "mcu5", "mcu6"]
-VALIDATION_MCUS = ["mcu3"]
-TESTING_MCUS = ["mcu8"]
+TRAINING_MCUS = ["mcu1", "mcu3", "mcu4", "mcu5", "mcu6", "mcu8"]
+VALIDATION_MCUS = ["mcu2"]
+TESTING_MCUS = ["mcu7"]
 
 AGING_START = datetime(2025, 2, 12)
 AGING_END = datetime(2025, 3, 8)

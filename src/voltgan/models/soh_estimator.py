@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 from voltgan.config import (
+    DROPOUT,
     ESTIMATOR_BASE_CHANNELS,
     ESTIMATOR_GRU_HIDDEN_SIZE,
     ESTIMATOR_GRU_N_LAYERS,
@@ -125,7 +126,7 @@ class SohEstimatorClient:
             kernel_size=ESTIMATOR_KERNEL_SIZE,
             gru_hidden_size=ESTIMATOR_GRU_HIDDEN_SIZE,
             gru_n_layers=ESTIMATOR_GRU_N_LAYERS,
-            dropout=0.1 if is_training else 0.0,
+            dropout=DROPOUT if is_training else 0.0,
         ).to(self.device)
 
         if checkpoint_path and checkpoint_path.exists():
