@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from voltgan.config import (
-    DATASET_PATH,
+    DATASET_DIR,
     EVALUATION_PROVIDER,
     MIN_SEQUENCE_LENGTH,
     OXFORD_MAT_PATH,
@@ -30,7 +30,7 @@ def main() -> None:
 
     print("\n--- Ingesting Wuppertal Data ---")
     WuppertalIngestor(
-        mf4_dir=DATASET_PATH / "mf4",
+        mf4_dir=DATASET_DIR / "mf4",
         raster=RASTER_FREQUENCY,
         min_seq_len=MIN_SEQUENCE_LENGTH,
         repo=wuppertal_repo,

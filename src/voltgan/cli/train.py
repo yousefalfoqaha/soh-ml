@@ -10,6 +10,8 @@ from torch.utils.data import DataLoader
 from voltgan.config import (
     BATCH_SIZE,
     DROPOUT,
+    EARLY_STOPPING_PATIENCE,
+    EPOCHS,
     ESTIMATOR_BASE_CHANNELS,
     ESTIMATOR_CHECKPOINT_PATH,
     ESTIMATOR_GRU_HIDDEN_SIZE,
@@ -18,15 +20,17 @@ from voltgan.config import (
     ESTIMATOR_KERNEL_SIZE,
     ESTIMATOR_N_CONDITIONS,
     ESTIMATOR_STRIDE,
-    LEARNING_RATE,
+    MAX_LEARNING_RATE,
     MAX_SEQUENCE_LENGTH,
-    N_EPOCHS,
+    MIN_LEARNING_RATE,
     RANDOM_SEED,
+    SCHEDULER_FACTOR,
+    SCHEDULER_PATIENCE,
     STATS_PATH,
-    TESTING_MCUS,
     TRAINING_MCUS,
     TRAINING_PROVIDER,
     VALIDATION_MCUS,
+    WEIGHT_DECAY,
 )
 from voltgan.dataset import EstimatorDataset, InstanceRepository
 from voltgan.models import SohEstimator
@@ -62,8 +66,7 @@ def main() -> None:
     repo = InstanceRepository(provider=TRAINING_PROVIDER)
 
     train_instances = repo.load(TRAINING_MCUS, max_length=MAX_SEQUENCE_LENGTH)
-    val_mcus = VALIDATION_MCUS + TESTING_MCUS
-    val_instances = repo.load(val_mcus, max_length=MAX_SEQUENCE_LENGTH)
+    val_instances = repo.load(VALIDATION_MCUS, max_length=MAX_SEQUENCE_LENGTH)
 
     with open(STATS_PATH) as f:
         stats = json.load(f)
@@ -91,25 +94,23 @@ def main() -> None:
 
     criterion = torch.nn.MSELoss()
     optimizer = torch.optim.AdamW(
-        model.parameters(), lr=LEARNING_RATE, weight_decay=1e-2
+        model.parameters(), lr=MAX_LEARNING_RATE, weight_decay=WEIGHT_DECAY
     )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
         mode="min",
-        patience=15,
-        factor=0.5,
-        cooldown=2,
-        min_lr=1e-5,
+        patience=SCHEDULER_PATIENCE,
+        factor=SCHEDULER_FACTOR,
+        min_lr=MIN_LEARNING_RATE,
     )
 
-    patience = 50
     best_val_loss = float("inf")
     best_state = None
     epochs_no_improve = 0
     prev_lr = optimizer.param_groups[0]["lr"]
 
     try:
-        for epoch in range(N_EPOCHS):
+        for epoch in range(EPOCHS):
             model.train()
             total_train_loss = 0.0
             total_train_samples = 0
@@ -153,20 +154,23 @@ def main() -> None:
             lr_marker = " v" if cur_lr < prev_lr - 1e-12 else ""
             prev_lr = cur_lr
 
+            is_best = avg_val < best_val_loss
+            star_marker = "*" if is_best else ""
+
             print(
-                f"Epoch {epoch + 1:02d}/{N_EPOCHS} | "
+                f"Epoch {epoch + 1:02d}/{EPOCHS} | "
                 f"lr={cur_lr:.2e}{lr_marker} | "
                 f"Train Loss: {avg_train:.5f} | "
-                f"Valid Loss: {avg_val:.5f}"
+                f"Valid Loss: {avg_val:.5f}{star_marker}"
             )
 
-            if avg_val < best_val_loss:
+            if is_best:
                 best_val_loss = avg_val
                 best_state = {k: v.clone() for k, v in model.state_dict().items()}
                 epochs_no_improve = 0
             else:
                 epochs_no_improve += 1
-                if epochs_no_improve >= patience:
+                if epochs_no_improve >= EARLY_STOPPING_PATIENCE:
                     print(f"Early stopping at epoch {epoch + 1}...")
                     break
 

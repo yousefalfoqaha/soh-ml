@@ -11,7 +11,7 @@ import numpy as np
 import torch
 
 from voltgan.config import (
-    CONFERENCE_PATH,
+    CONFERENCE_DIR,
     ESTIMATOR_CHECKPOINT_PATH,
     EVALUATION_PROVIDER,
     MAX_SEQUENCE_LENGTH,
@@ -24,7 +24,6 @@ from voltgan.config import (
     STATS_PATH,
     TESTING_MCUS,
     TRAINING_PROVIDER,
-    VALIDATION_MCUS,
 )
 from voltgan.dataset import EstimatorDataset, InstanceRepository, SohCurveFitter
 from voltgan.evaluation import InferenceEngine
@@ -63,10 +62,8 @@ def main() -> None:
 
     repo = InstanceRepository(provider=TRAINING_PROVIDER)
 
-    # initialize and run base estimator
-    mcus = VALIDATION_MCUS + TESTING_MCUS
-    instances = repo.load(mcus, max_length=MAX_SEQUENCE_LENGTH)
-    print(f"Loaded {len(instances)} valid/test instances from {mcus}")
+    instances = repo.load(TESTING_MCUS, max_length=MAX_SEQUENCE_LENGTH)
+    print(f"Loaded {len(instances)} test instances from {TESTING_MCUS}")
 
     dataset = EstimatorDataset(instances, stats)
     engine = InferenceEngine(client=client, dataset=dataset, stats=stats)
@@ -88,7 +85,7 @@ def main() -> None:
     ]
 
     LatexTable(
-        out_path=CONFERENCE_PATH / "baseline_results.tex",
+        out_path=CONFERENCE_DIR / "baseline_results.tex",
         caption="BASELINE ESTIMATOR PERFORMANCE",
         label="tab:baseline_results",
         align="lcccccc",
@@ -125,7 +122,7 @@ def main() -> None:
     ]
 
     LatexTable(
-        out_path=CONFERENCE_PATH / "temp_protocol_results.tex",
+        out_path=CONFERENCE_DIR / "temp_protocol_results.tex",
         caption="ESTIMATOR PERFORMANCE BY TEMPERATURE AND PROTOCOL",
         label="tab:temp_protocol_results",
         align="lcccccc",
@@ -149,7 +146,7 @@ def main() -> None:
     report = pfi_eval.run(features=_PFI_FEATURE_SPECS, protocols=PROTOCOL_ORDER)
 
     LatexTable(
-        out_path=CONFERENCE_PATH / "pfi_results.tex",
+        out_path=CONFERENCE_DIR / "pfi_results.tex",
         caption="STRATIFIED PFI RESULTS",
         label="tab:pfi_results",
         align="l" + "r" * len(report.ranked_features),
@@ -183,7 +180,7 @@ def main() -> None:
     )
 
     LatexTable(
-        out_path=CONFERENCE_PATH / "pfi_baseline.tex",
+        out_path=CONFERENCE_DIR / "pfi_baseline.tex",
         caption="PER-PROTOCOL BASELINE ESTIMATOR PERFORMANCE",
         label="tab:pfi_baseline",
         align="lcccc",
@@ -236,32 +233,32 @@ def main() -> None:
     ax.grid(True, axis="x", alpha=0.3)
     ax.legend(fontsize=9, loc="best", title="Protocol")
 
-    CONFERENCE_PATH.mkdir(parents=True, exist_ok=True)
-    out = CONFERENCE_PATH / "pfi_importance.pdf"
+    CONFERENCE_DIR.mkdir(parents=True, exist_ok=True)
+    out = CONFERENCE_DIR / "pfi_importance.pdf"
     fig.savefig(out, bbox_inches="tight")
     plt.close(fig)
     print(f"Chart saved -> {out}")
 
-    # validation trajectory plotting
-    val_results = [r for r in results if r.instance.cell_id in VALIDATION_MCUS]
-    if val_results:
+    # testing trajectory plotting (Updated to TESTING_MCUS)
+    test_results = [r for r in results if r.instance.cell_id in TESTING_MCUS]
+    if test_results:
         fitter = SohCurveFitter(
             reference_temperature=REFERENCE_TEMPERATURE,
             reference_discharge_rate=REFERENCE_DISCHARGE_RATE,
         )
 
-        val_instances = repo.load(VALIDATION_MCUS)
-        fit_result = fitter.fit(val_instances)
+        test_instances = repo.load(TESTING_MCUS)
+        fit_result = fitter.fit(test_instances)
 
         if fit_result is not None:
             print(
-                f"Loaded {len(fit_result.ref_points)} reference points from {VALIDATION_MCUS}"
+                f"Loaded {len(fit_result.ref_points)} reference points from {TESTING_MCUS}"
             )
 
             fig, ax = plt.subplots(figsize=(8, 4.5), layout="constrained")
 
             ref_dci = np.array([p[0] for p in fit_result.ref_points], dtype=float)
-            pred_dci = np.array([r.instance.dci for r in val_results], dtype=float)
+            pred_dci = np.array([r.instance.dci for r in test_results], dtype=float)
 
             # Safely extract predictions depending on InferenceEngine result structure
             pred_soh = np.array(
@@ -271,7 +268,7 @@ def main() -> None:
                         "prediction",
                         getattr(r, "predicted_soh", getattr(r, "pred", 0.0)),
                     )
-                    for r in val_results
+                    for r in test_results
                 ],
                 dtype=float,
             )
@@ -308,7 +305,7 @@ def main() -> None:
             ax.legend(fontsize=9, loc="best")
             ax.grid(True, alpha=0.3)
 
-            out_traj = CONFERENCE_PATH / "val_trajectory.pdf"
+            out_traj = CONFERENCE_DIR / "test_trajectory.pdf"
             fig.savefig(out_traj, bbox_inches="tight")
             plt.close(fig)
             print(f"Plot saved -> {out_traj}")
@@ -340,7 +337,7 @@ def main() -> None:
     ]
 
     LatexTable(
-        out_path=CONFERENCE_PATH / "oxford_results.tex",
+        out_path=CONFERENCE_DIR / "oxford_results.tex",
         caption="OXFORD DATASET ZERO-SHOT ESTIMATOR PERFORMANCE",
         label="tab:oxford_results",
         align="lcccccc",

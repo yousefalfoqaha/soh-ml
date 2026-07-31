@@ -132,8 +132,16 @@ class PermutationImportanceEvaluator:
         base_inst_pred = self.engine.aggregate_per_instance(base_preds, window_to_inst)
 
         protocol_windows = defaultdict(list)
+        # New: Track micro-strata indices within each protocol
+        protocol_strata_windows = defaultdict(lambda: defaultdict(list))
+
         for w_idx, proto in enumerate(window_to_proto):
             protocol_windows[proto].append(w_idx)
+
+            # Build the strict stratum key based on protocol, temp, and discharge rate
+            inst = inst_by_id[window_to_inst[w_idx]]
+            stratum = f"{proto}_{inst.temp_center}_{inst.discharge_rate}"
+            protocol_strata_windows[proto][stratum].append(w_idx)
 
         protocol_instance_ids = {
             p: {window_to_inst[i] for i in idxs} for p, idxs in protocol_windows.items()
@@ -154,21 +162,30 @@ class PermutationImportanceEvaluator:
 
         for spec in features:
             for p in protocols:
-                bucket_idx = protocol_windows.get(p, [])
-                if not bucket_idx or baseline[p].cycles == 0:
+                p_windows = protocol_windows.get(p, [])
+                if not p_windows or baseline[p].cycles == 0:
                     pfi_results[spec.name][p] = PfiResult(spec.name, p, [])
                     continue
 
                 deltas = []
                 for _ in range(self.repeats):
                     X_perm, cond_perm = X.clone(), conditions.clone()
-                    local = torch.randperm(len(bucket_idx))
 
-                    if spec.tensor_type == "X":
-                        for ch in spec.channels:
-                            X_perm[bucket_idx, :, ch] = X_perm[bucket_idx, :, ch][local]
-                    else:
-                        cond_perm[bucket_idx, 0] = cond_perm[bucket_idx, 0][local]
+                    # Permute strictly within each micro-stratum to preserve physical validity
+                    for stratum, bucket_idx in protocol_strata_windows[p].items():
+                        # If a stratum only has 1 window, it cannot be permuted with itself
+                        if len(bucket_idx) < 2:
+                            continue
+
+                        local = torch.randperm(len(bucket_idx))
+
+                        if spec.tensor_type == "X":
+                            for ch in spec.channels:
+                                X_perm[bucket_idx, :, ch] = X_perm[bucket_idx, :, ch][
+                                    local
+                                ]
+                        else:
+                            cond_perm[bucket_idx, 0] = cond_perm[bucket_idx, 0][local]
 
                     perm_preds = self.engine.run_batch_predictions(X_perm, cond_perm)
                     perm_inst_pred = self.engine.aggregate_per_instance(

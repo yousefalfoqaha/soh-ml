@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from voltgan.config import (
+    MAX_SEQUENCE_LENGTH,
     STATS_PATH,
     TRAINING_MCUS,
     TRAINING_PROVIDER,
@@ -13,10 +14,12 @@ def main() -> None:
 
     wuppertal_repo = InstanceRepository(provider=TRAINING_PROVIDER)
 
-    training_instances = wuppertal_repo.load(TRAINING_MCUS)
-    train_stats = StatisticsCalculator(save_path=STATS_PATH)
-    train_stats.compute(training_instances)
-    train_stats.save()
+    training_instances = wuppertal_repo.load(
+        TRAINING_MCUS, max_length=MAX_SEQUENCE_LENGTH
+    )
+    stats = StatisticsCalculator(save_path=STATS_PATH)
+    stats.compute(training_instances)
+    stats.save()
 
     print("\nCalculation complete.")
 

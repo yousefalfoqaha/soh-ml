@@ -10,7 +10,7 @@ import numpy as np
 
 from voltgan.config import (
     CURRENT_CHANNEL,
-    HDF_ROOT,
+    HDF_DIR,
     TEMPERATURE_CHANNEL,
     VOLTAGE_CHANNEL,
 )
@@ -42,7 +42,7 @@ class _HDFDataLoader:
 class InstanceRepository:
     def __init__(self, provider: str):
         self.provider = provider
-        self._root = HDF_ROOT / provider
+        self._root = HDF_DIR / provider
 
     def _create_data_loader(
         self, filepath: Path, max_length: int | None

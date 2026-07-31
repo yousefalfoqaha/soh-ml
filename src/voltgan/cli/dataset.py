@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from voltgan.config import (
-    CONFERENCE_PATH,
+    CONFERENCE_DIR,
     FEATURE_DISPLAY_NAMES,
     PHASE_ORDER,
     REFERENCE_DISCHARGE_RATE,
@@ -72,7 +72,7 @@ def main() -> None:
             )
 
     LatexTable(
-        out_path=CONFERENCE_PATH / "feature_stats.tex",
+        out_path=CONFERENCE_DIR / "feature_stats.tex",
         caption="FEATURE STATISTICS",
         label="tab:feature_stats",
         align="lcc",
@@ -85,7 +85,7 @@ def main() -> None:
     n = len(dist.temp_bands)
 
     LatexTable(
-        out_path=CONFERENCE_PATH / "temp_distribution.tex",
+        out_path=CONFERENCE_DIR / "temp_distribution.tex",
         caption="TEMPERATURE BAND DISTRIBUTION",
         label="tab:temp_phase_matrix",
         align="l" + "c" * n,
@@ -109,7 +109,7 @@ def main() -> None:
     mcu_summaries = DatasetAnalyzer.compute_mcu_summaries(instances, fitter)
 
     LatexTable(
-        out_path=CONFERENCE_PATH / "mcu_soh_summary.tex",
+        out_path=CONFERENCE_DIR / "mcu_soh_summary.tex",
         caption="MCU SOH RANGE AND CYCLE COUNT",
         label="tab:mcu_soh_summary",
         align="lcc",
@@ -163,8 +163,8 @@ def main() -> None:
     ax.legend(fontsize=9, loc="best")
     ax.grid(True, alpha=0.3)
 
-    CONFERENCE_PATH.mkdir(parents=True, exist_ok=True)
-    out_traj = CONFERENCE_PATH / "soh_trajectories.pdf"
+    CONFERENCE_DIR.mkdir(parents=True, exist_ok=True)
+    out_traj = CONFERENCE_DIR / "soh_trajectories.pdf"
     fig.savefig(out_traj, bbox_inches="tight")
     plt.close(fig)
     print(f"Plot saved -> {out_traj}")
@@ -202,7 +202,7 @@ def main() -> None:
         ax2.tick_params(labelsize=7)
         ax2.grid(True, alpha=0.3)
 
-    out_proto = CONFERENCE_PATH / "discharge_protocols.pdf"
+    out_proto = CONFERENCE_DIR / "discharge_protocols.pdf"
     fig2.savefig(out_proto, bbox_inches="tight")
     plt.close(fig2)
     print(f"Plot saved -> {out_proto}")

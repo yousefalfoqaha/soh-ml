@@ -7,14 +7,14 @@ from typing import cast
 import h5py
 import numpy as np
 
-from voltgan.config import HDF_ROOT
+from voltgan.config import HDF_DIR
 
 
 def main() -> None:
     if len(sys.argv) < 3:
         raise SystemExit("usage: voltgan inspect <hdf-rel-path>")
 
-    hdf_path = HDF_ROOT / Path(sys.argv[2])
+    hdf_path = HDF_DIR / Path(sys.argv[2])
     if not hdf_path.exists():
         raise FileNotFoundError(f"HDF file not found: {hdf_path}")
 
@@ -33,7 +33,9 @@ def main() -> None:
                 _print_group(name, cast(h5py.Group, obj))
                 for sub_name, sub_obj in obj.items():
                     if isinstance(sub_obj, h5py.Dataset):
-                        _print_dataset(sub_name, cast(h5py.Dataset, sub_obj), indent="    ")
+                        _print_dataset(
+                            sub_name, cast(h5py.Dataset, sub_obj), indent="    "
+                        )
                     elif isinstance(sub_obj, h5py.Group):
                         _print_group(sub_name, cast(h5py.Group, sub_obj), indent="    ")
             elif isinstance(obj, h5py.Dataset):
@@ -62,3 +64,4 @@ def _print_dataset(name: str, dataset: h5py.Dataset, indent: str = "  ") -> None
 def _print_group(name: str, group: h5py.Group, indent: str = "") -> None:
     print(f"{indent}{name}  (group, {len(group)} entries)")
     _print_attrs(dict(group.attrs), indent + "  ")
+

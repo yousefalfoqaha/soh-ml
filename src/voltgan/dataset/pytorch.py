@@ -10,6 +10,7 @@ from voltgan.config import (
     TEMP_DELTA_KEY,
     VOLTAGE_CHANNEL,
     WINDOW_SIZE,
+    WINDOW_STRIDE,
 )
 from voltgan.dataset.instance import DischargeInstance
 
@@ -37,9 +38,8 @@ class EstimatorDataset(torch.utils.data.Dataset):
         self.soh_p01, self.soh_p99 = stats[SOH_KEY]["p01"], stats[SOH_KEY]["p99"]
 
         self.windows = []
-        stride = 500
         for instance in instances:
-            for start in range(0, len(instance.data) - WINDOW_SIZE + 1, stride):
+            for start in range(0, len(instance.data) - WINDOW_SIZE + 1, WINDOW_STRIDE):
                 self.windows.append((instance, start, start + WINDOW_SIZE))
 
         print(f"Loaded {len(self.windows)} windows from {len(instances)} instances.")
