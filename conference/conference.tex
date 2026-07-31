@@ -224,12 +224,12 @@ Within each temperature band, the estimator performs consistently across the SoH
 
 Across discharge protocols, the model generalizes well, with each protocol spanning multiple temperature bands (Table~\ref{tab:phase_soh_summary}). Constant and HPPC achieve the highest fits ($R^2 = 0.92$ and $0.99$), and Pulse follows ($R^2 = 0.95$). WLTC has an $R^2$ of -0.11, but this reflects $3$ cycles restricted to the Initial phase, giving a narrow SoH band ($92.1$--$95.3\%$) (Table~\ref{tab:phase_soh_summary}).
 
-The validation MCU's SoH trajectory with predicted points is shown in Fig.~\ref{fig:val_trajectory}.
+The validation MCU's SoH trajectory with predicted points is shown in Fig.~\ref{fig:test_trajectory}.
 
 \begin{figure}[H]
-	\centerline{\includegraphics[width=\columnwidth]{val_trajectory.pdf}}
+	\centerline{\includegraphics[width=\columnwidth]{test_trajectory.pdf}}
 	\caption{Validation MCU SoH trajectory with predicted SoH points.}
-	\label{fig:val_trajectory}
+	\label{fig:test_trajectory}
 \end{figure}
 
 \subsection{Permutation Feature Importance (PFI)}
