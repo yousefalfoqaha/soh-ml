@@ -6,12 +6,12 @@ import scipy.io as sio
 
 from voltgan.config import (
     CHANNELS,
+    EVALUATION_PROVIDER,
     OXFORD_AMBIENT_TEMPERATURE,
     OXFORD_BASE_DATETIME,
     OXFORD_NOMINAL_CAPACITY_MAH,
     OXFORD_PHASE,
     OXFORD_PROTOCOL,
-    OXFORD_PROVIDER,
 )
 from voltgan.dataset.repository import InstanceRepository
 from voltgan.ingestor.base import DatasetIngestor
@@ -73,7 +73,7 @@ class OxfordIngestor(DatasetIngestor):
                     filename=filename,
                     data=dict(zip(CHANNELS, [v, i, temp])),
                     metadata={
-                        "provider": OXFORD_PROVIDER,
+                        "provider": EVALUATION_PROVIDER,
                         "cell_id": cell_key.lower(),
                         "soh": soh,
                         "curve_soh": soh,

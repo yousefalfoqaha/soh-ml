@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from voltgan.config import (
     DATASET_PATH,
+    EVALUATION_PROVIDER,
     MIN_SEQUENCE_LENGTH,
     OXFORD_MAT_PATH,
-    OXFORD_PROVIDER,
     RASTER_FREQUENCY,
     REFERENCE_DISCHARGE_RATE,
     REFERENCE_TEMPERATURE,
     TESTING_MCUS,
     TRAINING_MCUS,
+    TRAINING_PROVIDER,
     VALIDATION_MCUS,
-    WUPPERTAL_PROVIDER,
 )
 from voltgan.dataset import InstanceRepository, SohCurveFitter
 from voltgan.ingestor import OxfordIngestor, WuppertalIngestor
@@ -20,8 +20,8 @@ from voltgan.ingestor import OxfordIngestor, WuppertalIngestor
 def main() -> None:
     print("Starting data ingestion pipeline...")
 
-    wuppertal_repo = InstanceRepository(provider=WUPPERTAL_PROVIDER)
-    oxford_repo = InstanceRepository(provider=OXFORD_PROVIDER)
+    wuppertal_repo = InstanceRepository(provider=TRAINING_PROVIDER)
+    oxford_repo = InstanceRepository(provider=EVALUATION_PROVIDER)
 
     fitter = SohCurveFitter(
         reference_temperature=REFERENCE_TEMPERATURE,

@@ -13,9 +13,9 @@ import torch
 from voltgan.config import (
     CONFERENCE_PATH,
     ESTIMATOR_CHECKPOINT_PATH,
+    EVALUATION_PROVIDER,
     MAX_SEQUENCE_LENGTH,
     OXFORD_MCUS,
-    OXFORD_PROVIDER,
     PHASE_ORDER,
     PROTOCOL_ORDER,
     RANDOM_SEED,
@@ -23,8 +23,8 @@ from voltgan.config import (
     REFERENCE_TEMPERATURE,
     STATS_PATH,
     TESTING_MCUS,
+    TRAINING_PROVIDER,
     VALIDATION_MCUS,
-    WUPPERTAL_PROVIDER,
 )
 from voltgan.dataset import EstimatorDataset, InstanceRepository, SohCurveFitter
 from voltgan.evaluation import InferenceEngine
@@ -61,7 +61,7 @@ def main() -> None:
         device=device, checkpoint_path=ESTIMATOR_CHECKPOINT_PATH
     )
 
-    repo = InstanceRepository(provider=WUPPERTAL_PROVIDER)
+    repo = InstanceRepository(provider=TRAINING_PROVIDER)
 
     # initialize and run base estimator
     mcus = VALIDATION_MCUS + TESTING_MCUS
@@ -316,7 +316,7 @@ def main() -> None:
             print("Not enough reference points to fit SoH curve for trajectory plot.")
 
     # oxford zero-shot results
-    oxford_repo = InstanceRepository(provider=OXFORD_PROVIDER)
+    oxford_repo = InstanceRepository(provider=EVALUATION_PROVIDER)
     oxford_instances = oxford_repo.load(OXFORD_MCUS)
     print(f"Loaded {len(oxford_instances)} Oxford instances")
 

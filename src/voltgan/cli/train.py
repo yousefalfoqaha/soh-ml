@@ -25,8 +25,8 @@ from voltgan.config import (
     STATS_PATH,
     TESTING_MCUS,
     TRAINING_MCUS,
+    TRAINING_PROVIDER,
     VALIDATION_MCUS,
-    WUPPERTAL_PROVIDER,
 )
 from voltgan.dataset import EstimatorDataset, InstanceRepository
 from voltgan.models import SohEstimator
@@ -59,7 +59,7 @@ def main() -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    repo = InstanceRepository(provider=WUPPERTAL_PROVIDER)
+    repo = InstanceRepository(provider=TRAINING_PROVIDER)
 
     train_instances = repo.load(TRAINING_MCUS, max_length=MAX_SEQUENCE_LENGTH)
     val_mcus = VALIDATION_MCUS + TESTING_MCUS

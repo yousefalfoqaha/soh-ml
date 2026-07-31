@@ -17,8 +17,8 @@ from voltgan.config import (
     REFERENCE_TEMPERATURE,
     TESTING_MCUS,
     TRAINING_MCUS,
+    TRAINING_PROVIDER,
     VALIDATION_MCUS,
-    WUPPERTAL_PROVIDER,
 )
 from voltgan.dataset import (
     DatasetAnalyzer,
@@ -50,7 +50,7 @@ _MAX_PULSE_STEPS = 1000
 
 
 def main() -> None:
-    repo = InstanceRepository(provider=WUPPERTAL_PROVIDER)
+    repo = InstanceRepository(provider=TRAINING_PROVIDER)
     instances = repo.load(TRAINING_MCUS + VALIDATION_MCUS + TESTING_MCUS)
     print(f"Loaded {len(instances)} instances")
 

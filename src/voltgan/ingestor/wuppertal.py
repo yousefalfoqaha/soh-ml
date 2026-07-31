@@ -12,8 +12,8 @@ from voltgan.config import (
     NOMINAL_CAPACITY,
     TESTING_MCUS,
     TRAINING_MCUS,
+    TRAINING_PROVIDER,
     VALIDATION_MCUS,
-    WUPPERTAL_PROVIDER,
 )
 from voltgan.dataset.repository import InstanceRepository
 from voltgan.ingestor.base import DatasetIngestor, Window
@@ -210,7 +210,7 @@ class WuppertalIngestor(DatasetIngestor):
                 filename=filename,
                 data=resampled,
                 metadata={
-                    "provider": WUPPERTAL_PROVIDER,
+                    "provider": TRAINING_PROVIDER,
                     "cell_id": mcu,
                     "soh": w.soh,
                     "ambient_temperature": w.amb,

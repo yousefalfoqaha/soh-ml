@@ -10,8 +10,8 @@ CHECKPOINT_DIR = PROJECT_ROOT / "checkpoints"
 ESTIMATOR_CHECKPOINT_PATH = CHECKPOINT_DIR / "estimator.pt"
 CONFERENCE_PATH = PROJECT_ROOT / "conference"
 
-WUPPERTAL_PROVIDER = "wuppertal"
-OXFORD_PROVIDER = "oxford"
+TRAINING_PROVIDER = "wuppertal"
+EVALUATION_PROVIDER = "oxford"
 
 RANDOM_SEED = 42
 
@@ -28,14 +28,22 @@ TEMPERATURE_CHANNEL = "Temp[1]"
 AMBIENT_TEMPERATURE_KEY = "ambient_temperature"
 TEMP_DELTA_KEY = "temp_delta"
 SOH_KEY = "soh"
+
 CHANNELS = [VOLTAGE_CHANNEL, CURRENT_CHANNEL, TEMPERATURE_CHANNEL]
+
+FEATURE_DISPLAY_NAMES = {
+    VOLTAGE_CHANNEL: r"Voltage ($V$)",
+    CURRENT_CHANNEL: r"Current ($I$)",
+    TEMPERATURE_CHANNEL: r"Cell Temperature ($T$)",
+    AMBIENT_TEMPERATURE_KEY: r"Ambient Temperature ($T_{\text{amb}}$)",
+    TEMP_DELTA_KEY: r"Thermal Delta ($\Delta T_{\text{cell}}$)",
+    SOH_KEY: r"State of Health ($\text{SoH}$)",
+}
 
 RASTER_FREQUENCY = 1
 
 REFERENCE_TEMPERATURE = 25.0
 REFERENCE_DISCHARGE_RATE = 1.0
-
-LEAVE_OUT_TEMPERATURE_RANGE = (-2.0, 2.0)
 
 TRAINING_MCUS = ["mcu1", "mcu3", "mcu4", "mcu5", "mcu6", "mcu8"]
 VALIDATION_MCUS = ["mcu2"]
@@ -74,12 +82,3 @@ OXFORD_PHASE = PHASE_ORDER[1]
 OXFORD_FINE_TUNE_FRACTION = 0.15
 OXFORD_BASE_DATETIME = datetime(2015, 1, 8)
 OXFORD_MCUS = [f"cell{i}" for i in range(1, OXFORD_N_CELLS + 1)]
-
-FEATURE_DISPLAY_NAMES = {
-    VOLTAGE_CHANNEL: r"Voltage ($V$)",
-    CURRENT_CHANNEL: r"Current ($I$)",
-    TEMPERATURE_CHANNEL: r"Cell Temperature ($T$)",
-    AMBIENT_TEMPERATURE_KEY: r"Ambient Temperature ($T_{\text{amb}}$)",
-    TEMP_DELTA_KEY: r"Thermal Delta ($\Delta T_{\text{cell}}$)",
-    SOH_KEY: r"State of Health ($\text{SoH}$)",
-}
