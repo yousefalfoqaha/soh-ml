@@ -20,9 +20,10 @@ class StatisticsCalculator:
         self.save_path = save_path
         self.stats = {}
 
-    def compute(
+    def calculate_mean_std(
         self, instances: list[DischargeInstance]
     ) -> dict[str, dict[str, float]]:
+        """Calculates traditional Mean and Standard Deviation (for paper/analysis)."""
         stat_keys = [
             VOLTAGE_CHANNEL,
             CURRENT_CHANNEL,
@@ -51,10 +52,7 @@ class StatisticsCalculator:
             t_delta = t - inst.ambient_temperature
             amb = inst.ambient_temperature
 
-            for key, val in zip(
-                stat_keys,
-                [v, i, t, t_delta, amb],
-            ):
+            for key, val in zip(stat_keys, [v, i, t, t_delta, amb]):
                 if key == AMBIENT_TEMPERATURE_KEY:
                     sums[key] += float(val * n_rows)
                     sq_sums[key] += float((val**2) * n_rows)
@@ -71,49 +69,73 @@ class StatisticsCalculator:
             mean = sums[key] / total_rows
             variance = (sq_sums[key] / total_rows) - (mean**2)
             std = float(np.sqrt(max(variance, 1e-8)))
-
-            if np.isnan(mean) or np.isinf(mean) or np.isnan(std) or np.isinf(std):
-                raise ValueError(
-                    f"Invalid or NaN/Inf statistics detected for channel '{key}': mean={mean}, std={std}"
-                )
-
-            if key == VOLTAGE_CHANNEL and (mean < 1.0 or mean > 5.0):
-                raise ValueError(f"Unrealistic voltage mean detected: {mean:.4f}")
-            if key == TEMPERATURE_CHANNEL and (mean < -50.0 or mean > 150.0):
-                raise ValueError(f"Unrealistic temperature mean detected: {mean:.4f}")
-            if key == AMBIENT_TEMPERATURE_KEY and (mean < -50.0 or mean > 100.0):
-                raise ValueError(
-                    f"Unrealistic ambient temperature mean detected: {mean:.4f}"
-                )
-
-            result[key] = {
-                "mean": float(mean),
-                "standard_deviation": std,
-            }
-
-        if not soh_values:
-            raise ValueError("No curve_soh attributes found across discovered files.")
+            result[key] = {"mean": float(mean), "standard_deviation": std}
 
         soh_array = np.asarray(soh_values, dtype=np.float64)
-        soh_mean = float(soh_array.mean())
-        soh_std = float(np.sqrt(max(soh_array.var(), 1e-8)))
-
-        if (
-            np.isnan(soh_mean)
-            or np.isinf(soh_mean)
-            or soh_mean <= 0.0
-            or soh_mean > 1.0
-        ):
-            raise ValueError(
-                f"Unrealistic or invalid SOH mean detected: {soh_mean:.4f}"
-            )
-
         result[SOH_KEY] = {
-            "mean": soh_mean,
-            "standard_deviation": soh_std,
+            "mean": float(soh_array.mean()),
+            "standard_deviation": float(np.sqrt(max(soh_array.var(), 1e-8))),
         }
 
-        self._print_stats(result, total_rows)
+        self._print_stats(
+            "Mean & Std (Traditional)", result, total_rows, ["Mean", "Std Dev"]
+        )
+        return result
+
+    def compute(
+        self, instances: list[DischargeInstance]
+    ) -> dict[str, dict[str, float]]:
+        """Calculates Robust Min-Max bounds (1st and 99th Percentiles) for neural network scaling."""
+        stat_keys = [
+            VOLTAGE_CHANNEL,
+            CURRENT_CHANNEL,
+            TEMPERATURE_CHANNEL,
+            TEMP_DELTA_KEY,
+            AMBIENT_TEMPERATURE_KEY,
+            SOH_KEY,
+        ]
+
+        data_buffers = {key: [] for key in stat_keys}
+        total_rows = 0
+
+        for inst in instances:
+            n_rows = len(inst)
+            if n_rows == 0:
+                continue
+
+            total_rows += n_rows
+
+            data_buffers[VOLTAGE_CHANNEL].append(inst.voltage)
+            data_buffers[CURRENT_CHANNEL].append(inst.current)
+            data_buffers[TEMPERATURE_CHANNEL].append(inst.temperature)
+            data_buffers[TEMP_DELTA_KEY].append(
+                inst.temperature - inst.ambient_temperature
+            )
+            data_buffers[AMBIENT_TEMPERATURE_KEY].append(
+                np.full(n_rows, inst.ambient_temperature)
+            )
+            data_buffers[SOH_KEY].append(np.full(n_rows, inst.curve_soh))
+
+        if total_rows == 0:
+            raise ValueError("No data points found.")
+
+        result: dict[str, dict[str, float]] = {}
+
+        for key in stat_keys:
+            concat_data = np.concatenate(data_buffers[key])
+
+            # Calculate percentiles and cast to native Python floats for JSON serialization
+            p01 = float(np.percentile(concat_data, 1))
+            p99 = float(np.percentile(concat_data, 99))
+
+            result[key] = {
+                "p01": p01,
+                "p99": p99,
+            }
+
+        self._print_stats(
+            "Robust Min-Max Percentiles", result, total_rows, ["1st %ile", "99th %ile"]
+        )
         self.stats = result
         return result
 
@@ -124,15 +146,28 @@ class StatisticsCalculator:
                 json.dump(self.stats, f, indent=2)
 
     @staticmethod
-    def _print_stats(stats: dict[str, dict[str, float]], total_rows: int):
-        print(f"\nTotal time steps: {total_rows:,}")
+    def _print_stats(
+        title: str,
+        stats: dict[str, dict[str, float]],
+        total_rows: int,
+        col_names: list[str],
+    ):
+        print(f"\n{title} | Total time steps: {total_rows:,}")
         if not stats:
             return
 
-        headers = ["Channel", "Mean", "Standard Deviation"]
+        headers = ["Channel", col_names[0], col_names[1]]
+
+        # Determine the correct dictionary keys based on what was calculated
+        k1 = "mean" if "mean" in next(iter(stats.values())) else "p01"
+        k2 = (
+            "standard_deviation"
+            if "standard_deviation" in next(iter(stats.values()))
+            else "p99"
+        )
+
         rows = [
-            [channel, f"{s['mean']:.4f}", f"{s['standard_deviation']:.4f}"]
-            for channel, s in stats.items()
+            [channel, f"{s[k1]:.4f}", f"{s[k2]:.4f}"] for channel, s in stats.items()
         ]
         print_box_table(
             headers,

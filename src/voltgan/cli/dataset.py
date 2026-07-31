@@ -55,7 +55,7 @@ def main() -> None:
     print(f"Loaded {len(instances)} instances")
 
     # feature statistics table
-    stats = StatisticsCalculator().compute(instances)
+    stats = StatisticsCalculator().calculate_mean_std(instances)
     feature_rows = []
 
     for key, display_name in FEATURE_DISPLAY_NAMES.items():

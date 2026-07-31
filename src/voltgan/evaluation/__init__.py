@@ -1,10 +1,8 @@
-from .generator_inferer import GeneratorInferer
 from .inference import InferenceEngine
 from .metrics import MetricsAggregator, MetricSet, PredictionResult
 from .pfi import FeatureSpec, PermutationImportanceEvaluator, PfiReport, PfiResult
 
 __all__ = [
-    "GeneratorInferer",
     "InferenceEngine",
     "MetricsAggregator",
     "MetricSet",

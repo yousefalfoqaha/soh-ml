@@ -1,6 +1,6 @@
 import sys
 
-_VALID = {"ingest", "dataset", "evaluation", "train", "infer", "inspect"}
+_VALID = {"ingest", "dataset", "inspect", "stats", "train", "evaluation"}
 
 _USAGE = """\
 Usage: python -m voltgan <command>
@@ -8,9 +8,10 @@ Usage: python -m voltgan <command>
 Commands:
   ingest                      Run data ingestion pipeline (Wuppertal + Oxford)
   dataset                     Generate dataset statistics tables and figures
-  evaluation                  Run estimator evaluation + PFI + Oxford tables/charts
-  train                       Train a model
   inspect <hdf-rel-path>      Inspect structure and contents of an HDF file
+  stats                       Calculate training statistics
+  train                       Train a model
+  evaluation                  Run estimator evaluation + PFI + Oxford tables/charts
 """
 
 
@@ -27,14 +28,14 @@ def _main() -> None:
             from voltgan.cli.ingest import main as _main_fn
         case "dataset":
             from voltgan.cli.dataset import main as _main_fn
-        case "evaluation":
-            from voltgan.cli.evaluation import main as _main_fn
-        case "train":
-            from voltgan.cli.train import main as _main_fn
-        case "infer":
-            from voltgan.cli.infer import main as _main_fn
         case "inspect":
             from voltgan.cli.inspect import main as _main_fn
+        case "stats":
+            from voltgan.cli.stats import main as _main_fn
+        case "train":
+            from voltgan.cli.train import main as _main_fn
+        case "evaluation":
+            from voltgan.cli.evaluation import main as _main_fn
         case _:
             print(f"Unknown command: {command!r}")
             sys.exit(1)
