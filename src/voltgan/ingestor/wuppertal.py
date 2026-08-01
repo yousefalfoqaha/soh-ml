@@ -9,11 +9,11 @@ from voltgan.config import (
     AGING_START,
     CHANNELS,
     CURRENT_CHANNEL,
-    NOMINAL_CAPACITY,
     TESTING_MCUS,
     TRAINING_MCUS,
     TRAINING_PROVIDER,
     VALIDATION_MCUS,
+    WUPPERTAL_NOMINAL_C,
 )
 from voltgan.dataset.repository import InstanceRepository
 from voltgan.ingestor.base import DatasetIngestor, Window
@@ -139,7 +139,7 @@ class WuppertalIngestor(DatasetIngestor):
 
             cur = i_samps[i_mask]
             w.soh = min(
-                abs(float(np.trapezoid(cur, i_times[i_mask]))) / NOMINAL_CAPACITY,
+                abs(float(np.trapezoid(cur, i_times[i_mask]))) / WUPPERTAL_NOMINAL_C,
                 1.0,
             )
 
@@ -152,7 +152,7 @@ class WuppertalIngestor(DatasetIngestor):
 
             if w.protocol in ("Constant", "Pulse"):
                 min_current = float(np.min(cur))
-                capacity_ah = NOMINAL_CAPACITY / 3600.0
+                capacity_ah = WUPPERTAL_NOMINAL_C / 3600.0
                 raw_rate = abs(min_current) / capacity_ah
                 w.discharge_rate = round(raw_rate, 1)
             else:
