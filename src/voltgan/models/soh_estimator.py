@@ -145,5 +145,23 @@ class SohEstimatorClient:
     def eval(self):
         self.model.eval()
 
+    def finetune(self):
+        self.train()
+
+        for param in self.model.parameters():
+            param.requires_grad_(False)
+
+        # for param in self.model.conv_stack[0].parameters():
+        #     param.requires_grad_(True)
+
+        for param in self.model.attn.parameters():
+            param.requires_grad_(True)
+
+        for param in self.model.output.parameters():
+            param.requires_grad_(True)
+
+    def trainable_parameters(self):
+        return [p for p in self.model.parameters() if p.requires_grad]
+
     def __call__(self, X: torch.Tensor, conditions: torch.Tensor) -> torch.Tensor:
         return self.model(X, conditions)

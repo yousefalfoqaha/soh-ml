@@ -9,25 +9,16 @@ from torch.utils.data import DataLoader
 
 from voltgan.config import (
     BATCH_SIZE,
-    DROPOUT,
     EARLY_STOPPING_PATIENCE,
     EPOCHS,
-    ESTIMATOR_BASE_CHANNELS,
     ESTIMATOR_CHECKPOINT_PATH,
-    ESTIMATOR_GRU_HIDDEN_SIZE,
-    ESTIMATOR_GRU_N_LAYERS,
-    ESTIMATOR_INPUT_FEATURES,
-    ESTIMATOR_KERNEL_SIZE,
-    ESTIMATOR_N_CONDITIONS,
-    ESTIMATOR_STRIDE,
     EVALUATION_PROVIDER,
     FINETUNED_CHECKPOINT_PATH,
     FT_MAX_LEARNING_RATE,
     FT_MIN_LEARNING_RATE,
     MAX_SEQUENCE_LENGTH,
-    OXFORD_MCUS,
-    OXFORD_TRAINING_PERCENTAGE,
-    OXFORD_VALIDATION_PERCENTAGE,
+    OXFORD_TRAINING_MCUS,
+    OXFORD_VALIDATION_MCUS,
     RANDOM_SEED,
     SCHEDULER_FACTOR,
     SCHEDULER_PATIENCE,
@@ -35,8 +26,7 @@ from voltgan.config import (
     WEIGHT_DECAY,
 )
 from voltgan.dataset import EstimatorDataset, InstanceRepository
-from voltgan.dataset.splitter import OxfordSplitter
-from voltgan.models import SohEstimator
+from voltgan.models import SohEstimatorClient
 
 _interrupted = False
 _force_quit = False
@@ -67,62 +57,46 @@ def main() -> None:
     print(f"Using device: {device}")
 
     repo = InstanceRepository(provider=EVALUATION_PROVIDER)
-    oxford_instances = repo.load(OXFORD_MCUS, max_length=MAX_SEQUENCE_LENGTH)
-    print(f"Loaded {len(oxford_instances)} Oxford instances from {OXFORD_MCUS}")
-
+    train_instances = repo.load(OXFORD_TRAINING_MCUS, max_length=MAX_SEQUENCE_LENGTH)
+    val_instances = repo.load(OXFORD_VALIDATION_MCUS, max_length=MAX_SEQUENCE_LENGTH)
     print(
-        f"Splitting per cell (chronological, by dci): "
-        f"fine_tune={OXFORD_TRAINING_PERCENTAGE:.0%}, "
-        f"validation={OXFORD_VALIDATION_PERCENTAGE:.0%}, "
-        f"eval={1 - OXFORD_TRAINING_PERCENTAGE - OXFORD_VALIDATION_PERCENTAGE:.0%}"
-    )
-    splitter = OxfordSplitter(oxford_instances)
-    split = splitter.split(
-        training_percentage=OXFORD_TRAINING_PERCENTAGE,
-        validation_percentage=OXFORD_VALIDATION_PERCENTAGE,
-    )
-    print(
-        f"Total: {len(split.fine_tune)} fine-tune / {len(split.validation)} validation / "
-        f"{len(split.eval)} eval instances (eval held out, unused here)"
+        f"Loaded {len(train_instances)} Oxford instances from {OXFORD_TRAINING_MCUS + OXFORD_VALIDATION_MCUS}"
     )
 
     with open(STATS_PATH) as f:
         stats = json.load(f)
 
-    ft_dataset = EstimatorDataset(instances=split.fine_tune, stats=stats)
-    val_dataset = EstimatorDataset(instances=split.validation, stats=stats)
+    train_dataset = EstimatorDataset(instances=train_instances, stats=stats)
+    val_dataset = EstimatorDataset(instances=val_instances, stats=stats)
 
-    ft_loader = DataLoader(
-        ft_dataset, batch_size=BATCH_SIZE, shuffle=True, pin_memory=True
+    train_loader = DataLoader(
+        train_dataset, batch_size=BATCH_SIZE, shuffle=True, pin_memory=True
     )
     val_loader = DataLoader(
         val_dataset, batch_size=BATCH_SIZE, shuffle=False, pin_memory=True
     )
-
-    model = SohEstimator(
-        input_features=ESTIMATOR_INPUT_FEATURES,
-        n_conditions=ESTIMATOR_N_CONDITIONS,
-        base_channels=ESTIMATOR_BASE_CHANNELS,
-        stride=ESTIMATOR_STRIDE,
-        gru_hidden_size=ESTIMATOR_GRU_HIDDEN_SIZE,
-        gru_n_layers=ESTIMATOR_GRU_N_LAYERS,
-        dropout=DROPOUT,
-        kernel_size=ESTIMATOR_KERNEL_SIZE,
-    ).to(device)
 
     if not ESTIMATOR_CHECKPOINT_PATH.exists():
         raise FileNotFoundError(
             f"Pretrained checkpoint not found at {ESTIMATOR_CHECKPOINT_PATH}. "
             "Train the base estimator before fine-tuning."
         )
-    model.load_state_dict(
-        torch.load(ESTIMATOR_CHECKPOINT_PATH, map_location=device, weights_only=True)
+
+    client = SohEstimatorClient(
+        device=device,
+        checkpoint_path=ESTIMATOR_CHECKPOINT_PATH,
+        is_training=True,
     )
-    print(f"Loaded pretrained weights from {ESTIMATOR_CHECKPOINT_PATH}")
+    client.finetune()
+    print(
+        f"Loaded pretrained weights and frozen layers from {ESTIMATOR_CHECKPOINT_PATH}"
+    )
 
     criterion = torch.nn.MSELoss()
     optimizer = torch.optim.AdamW(
-        model.parameters(), lr=FT_MAX_LEARNING_RATE, weight_decay=WEIGHT_DECAY
+        client.trainable_parameters(),
+        lr=FT_MAX_LEARNING_RATE,
+        weight_decay=WEIGHT_DECAY,
     )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
@@ -139,17 +113,17 @@ def main() -> None:
 
     try:
         for epoch in range(EPOCHS):
-            model.train()
+            client.train()
             total_train_loss = 0.0
             total_train_samples = 0
 
-            for X, conditions, y in ft_loader:
+            for X, conditions, y in train_loader:
                 X = X.to(device, non_blocking=True)
                 conditions = conditions.to(device, non_blocking=True)
                 y = y.to(device, non_blocking=True)
 
                 optimizer.zero_grad(set_to_none=True)
-                y_pred = model(X, conditions)
+                y_pred = client(X, conditions)
                 loss = criterion(y_pred, y)
                 loss.backward()
                 optimizer.step()
@@ -159,7 +133,7 @@ def main() -> None:
 
             avg_train = total_train_loss / total_train_samples
 
-            model.eval()
+            client.eval()
             total_val_loss = 0.0
             total_val_samples = 0
 
@@ -169,7 +143,7 @@ def main() -> None:
                     conditions = conditions.to(device, non_blocking=True)
                     y = y.to(device, non_blocking=True)
 
-                    y_pred = model(X, conditions)
+                    y_pred = client(X, conditions)
                     loss = criterion(y_pred, y)
 
                     total_val_loss += loss.item() * y.size(0)
@@ -194,7 +168,9 @@ def main() -> None:
 
             if is_best:
                 best_val_loss = avg_val
-                best_state = {k: v.clone() for k, v in model.state_dict().items()}
+                best_state = {
+                    k: v.clone() for k, v in client.model.state_dict().items()
+                }
                 epochs_no_improve = 0
             else:
                 epochs_no_improve += 1
@@ -208,11 +184,11 @@ def main() -> None:
     finally:
         if not _force_quit:
             if best_state is not None:
-                model.load_state_dict(best_state)
+                client.model.load_state_dict(best_state)
                 print(f"Restored best model (val loss={best_val_loss:.5f}).")
 
             FINETUNED_CHECKPOINT_PATH.parent.mkdir(parents=True, exist_ok=True)
-            torch.save(model.state_dict(), FINETUNED_CHECKPOINT_PATH)
+            torch.save(client.model.state_dict(), FINETUNED_CHECKPOINT_PATH)
             print(f"Model saved -> {FINETUNED_CHECKPOINT_PATH}")
 
 

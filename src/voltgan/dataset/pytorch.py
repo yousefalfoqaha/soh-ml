@@ -16,7 +16,7 @@ from voltgan.dataset.instance import DischargeInstance
 
 
 class EstimatorDataset(torch.utils.data.Dataset):
-    """Lazy-loading dataset for battery discharge windows utilizing Robust Min-Max Scaling."""
+    """Lazy-loading dataset for battery discharge windows utilizing Robust Min-Max Scaling (Unclipped)."""
 
     def __init__(self, instances: list[DischargeInstance], stats: dict):
         self.v_p01, self.v_p99 = (
@@ -48,13 +48,13 @@ class EstimatorDataset(torch.utils.data.Dataset):
     def _robust_scale(
         x: np.ndarray | float, p01: float, p99: float
     ) -> np.ndarray | float:
-        """Clips data to the 1st/99th percentiles and scales it to strictly [-1, 1]."""
+        """Scales data based on 1st/99th percentiles. Extrapolates beyond [-1, 1] if unclipped."""
         denominator = p99 - p01
         if denominator == 0:
             denominator = 1e-8
 
-        clipped_x = np.clip(x, p01, p99)
-        return 2.0 * (clipped_x - p01) / denominator - 1.0
+        # Directly scale without clipping to preserve physical waveform fidelity
+        return 2.0 * (x - p01) / denominator - 1.0
 
     def __len__(self) -> int:
         return len(self.windows)

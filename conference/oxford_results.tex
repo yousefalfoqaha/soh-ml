@@ -1,22 +1,14 @@
 \begin{table}[H]
-    \caption{OXFORD DATASET ZERO-SHOT ESTIMATOR PERFORMANCE}
+    \caption{OXFORD DATASET PERFORMANCE: ZERO-SHOT VS. FINE-TUNED (EVALUATED ON HELD-OUT TEST CELLS)}
     \label{tab:oxford_results}
     \begin{center}
         \footnotesize
         \begin{tabular}{lcccccc}
             \hline
-            \textbf{Cell} & \textbf{SoH (\%)} & \textbf{RMSE} & \textbf{MAE} & \textbf{R\textsuperscript{2}} & \textbf{\%Err} & \textbf{Cycles} \\
+            \textbf{Model} & \textbf{SoH (\%)} & \textbf{RMSE} & \textbf{MAE} & \textbf{R\textsuperscript{2}} & \textbf{\%Err} & \textbf{Cycles} \\
             \hline
-            Cell 1 & $75.7$--$99.9$ & 0.350 & 0.343 & $-25.03$ & 40.0\% & 78 \\
-            Cell 2 & $67.8$--$99.3$ & 0.345 & 0.336 & $-19.74$ & 39.4\% & 73 \\
-            Cell 3 & $76.5$--$99.3$ & 0.355 & 0.348 & $-27.10$ & 40.2\% & 76 \\
-            Cell 4 & $78.5$--$99.2$ & 0.366 & 0.361 & $-35.19$ & 41.2\% & 47 \\
-            Cell 5 & $61.6$--$99.4$ & 0.369 & 0.364 & $-32.50$ & 40.7\% & 46 \\
-            Cell 6 & $78.2$--$99.0$ & 0.365 & 0.361 & $-42.56$ & 40.6\% & 46 \\
-            Cell 7 & $78.8$--$98.5$ & 0.354 & 0.350 & $-38.99$ & 40.0\% & 77 \\
-            Cell 8 & $75.4$--$98.3$ & 0.352 & 0.345 & $-27.26$ & 40.2\% & 76 \\
-            \hline
-            \textbf{Overall} & $\mathbf{61.6$--$99.9}$ & \textbf{0.355} & \textbf{0.349} & $\mathbf{-27.39}$ & \textbf{40.2\%} & \textbf{519} \\
+            Zero-Shot & $75.4$--$98.3$ & 0.376 & 0.371 & $-31.39$ & 43.2\% & 76 \\
+            \textbf{Fine-Tuned} & $\mathbf{75.4$--$98.3}$ & \textbf{0.012} & \textbf{0.010} & $\mathbf{0.97}$ & \textbf{1.1\%} & \textbf{76} \\
             \hline
         \end{tabular}
     \end{center}

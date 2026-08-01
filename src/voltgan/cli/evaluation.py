@@ -14,8 +14,9 @@ from voltgan.config import (
     CONFERENCE_DIR,
     ESTIMATOR_CHECKPOINT_PATH,
     EVALUATION_PROVIDER,
+    FINETUNED_CHECKPOINT_PATH,
     MAX_SEQUENCE_LENGTH,
-    OXFORD_MCUS,
+    OXFORD_TESTING_MCUS,
     PHASE_ORDER,
     PROTOCOL_ORDER,
     RANDOM_SEED,
@@ -138,6 +139,122 @@ def main() -> None:
         ],
     ).write()
 
+    # oxford: zero-shot vs. fine-tuned, evaluated on the held-out test set only
+    oxford_repo = InstanceRepository(provider=EVALUATION_PROVIDER)
+    oxford_instances = oxford_repo.load(OXFORD_TESTING_MCUS)
+    print(f"Loaded {len(oxford_instances)} Oxford instances from {OXFORD_TESTING_MCUS}")
+    print(f"Evaluating on {len(oxford_instances)} held-out Oxford test instances")
+
+    oxford_eval_dataset = EstimatorDataset(oxford_instances, stats)
+
+    # zero-shot: the base Wuppertal-trained model, never seen Oxford data
+    zero_shot_engine = InferenceEngine(
+        client=client, dataset=oxford_eval_dataset, stats=stats
+    )
+    zero_shot_results = zero_shot_engine.run_predictions()
+    zero_shot_metrics = MetricsAggregator.compute("Zero-Shot", zero_shot_results)
+
+    # fine-tuned: same architecture, weights adapted on the Oxford fine-tune split
+    if not FINETUNED_CHECKPOINT_PATH.exists():
+        raise FileNotFoundError(
+            f"Fine-tuned checkpoint not found at {FINETUNED_CHECKPOINT_PATH}. "
+            "Run the fine-tuning script before evaluating."
+        )
+    finetuned_client = SohEstimatorClient(
+        device=device, checkpoint_path=FINETUNED_CHECKPOINT_PATH
+    )
+    finetuned_engine = InferenceEngine(
+        client=finetuned_client, dataset=oxford_eval_dataset, stats=stats
+    )
+    finetuned_results = finetuned_engine.run_predictions()
+    finetuned_metrics = MetricsAggregator.compute("Fine-Tuned", finetuned_results)
+
+    LatexTable(
+        out_path=CONFERENCE_DIR / "oxford_results.tex",
+        caption="OXFORD DATASET PERFORMANCE: ZERO-SHOT VS. FINE-TUNED "
+        "(EVALUATED ON HELD-OUT TEST CELLS)",
+        label="tab:oxford_results",
+        align="lcccccc",
+        headers=["Model", *_TABLE_HEADER],
+        items=[
+            TableRow(cells=zero_shot_metrics.to_latex_cells()),
+            TableRow(cells=finetuned_metrics.to_latex_cells(), bold=True),
+        ],
+    ).write()
+
+    # testing trajectory plotting (Updated to TESTING_MCUS)
+    test_results = [r for r in results if r.instance.cell_id in TESTING_MCUS]
+    if test_results:
+        fitter = SohCurveFitter(
+            reference_temperature=REFERENCE_TEMPERATURE,
+            reference_discharge_rate=REFERENCE_DISCHARGE_RATE,
+        )
+
+        test_instances = repo.load(TESTING_MCUS)
+        fit_result = fitter.fit(test_instances)
+
+        if fit_result is not None:
+            print(
+                f"Loaded {len(fit_result.ref_points)} reference points from {TESTING_MCUS}"
+            )
+
+            fig, ax = plt.subplots(figsize=(8, 4.5), layout="constrained")
+
+            ref_dci = np.array([p[0] for p in fit_result.ref_points], dtype=float)
+            pred_dci = np.array([r.instance.dci for r in test_results], dtype=float)
+
+            # Safely extract predictions depending on InferenceEngine result structure
+            pred_soh = np.array(
+                [
+                    getattr(
+                        r,
+                        "prediction",
+                        getattr(r, "predicted_soh", getattr(r, "pred", 0.0)),
+                    )
+                    for r in test_results
+                ],
+                dtype=float,
+            )
+
+            min_dci = float(ref_dci.min())
+            max_dci = float(max(ref_dci.max(), pred_dci.max()))
+            dense_dci = np.linspace(min_dci, max_dci, 500)
+            dense_soh = np.clip(
+                [fit_result.model(float(t)) for t in dense_dci], 0.0, 1.0
+            )
+
+            ax.plot(
+                dense_dci,
+                dense_soh,
+                color="tab:blue",
+                lw=2,
+                label="Real (Fitted) SoH",
+                zorder=2,
+            )
+
+            ax.scatter(
+                pred_dci,
+                pred_soh,
+                s=30,
+                color="tab:red",
+                alpha=0.7,
+                label="Predicted SoH",
+                zorder=3,
+                edgecolors="none",
+            )
+
+            ax.set_xlabel("Discharge Cycles")
+            ax.set_ylabel("SoH")
+            ax.legend(fontsize=9, loc="best")
+            ax.grid(True, alpha=0.3)
+
+            out_traj = CONFERENCE_DIR / "test_trajectory.pdf"
+            fig.savefig(out_traj, bbox_inches="tight")
+            plt.close(fig)
+            print(f"Plot saved -> {out_traj}")
+        else:
+            print("Not enough reference points to fit SoH curve for trajectory plot.")
+
     # stratified permutation feature importance (pfi)
     torch.manual_seed(RANDOM_SEED)
     np.random.seed(RANDOM_SEED)
@@ -238,116 +355,6 @@ def main() -> None:
     fig.savefig(out, bbox_inches="tight")
     plt.close(fig)
     print(f"Chart saved -> {out}")
-
-    # testing trajectory plotting (Updated to TESTING_MCUS)
-    test_results = [r for r in results if r.instance.cell_id in TESTING_MCUS]
-    if test_results:
-        fitter = SohCurveFitter(
-            reference_temperature=REFERENCE_TEMPERATURE,
-            reference_discharge_rate=REFERENCE_DISCHARGE_RATE,
-        )
-
-        test_instances = repo.load(TESTING_MCUS)
-        fit_result = fitter.fit(test_instances)
-
-        if fit_result is not None:
-            print(
-                f"Loaded {len(fit_result.ref_points)} reference points from {TESTING_MCUS}"
-            )
-
-            fig, ax = plt.subplots(figsize=(8, 4.5), layout="constrained")
-
-            ref_dci = np.array([p[0] for p in fit_result.ref_points], dtype=float)
-            pred_dci = np.array([r.instance.dci for r in test_results], dtype=float)
-
-            # Safely extract predictions depending on InferenceEngine result structure
-            pred_soh = np.array(
-                [
-                    getattr(
-                        r,
-                        "prediction",
-                        getattr(r, "predicted_soh", getattr(r, "pred", 0.0)),
-                    )
-                    for r in test_results
-                ],
-                dtype=float,
-            )
-
-            min_dci = float(ref_dci.min())
-            max_dci = float(max(ref_dci.max(), pred_dci.max()))
-            dense_dci = np.linspace(min_dci, max_dci, 500)
-            dense_soh = np.clip(
-                [fit_result.model(float(t)) for t in dense_dci], 0.0, 1.0
-            )
-
-            ax.plot(
-                dense_dci,
-                dense_soh,
-                color="tab:blue",
-                lw=2,
-                label="Real (Fitted) SoH",
-                zorder=2,
-            )
-
-            ax.scatter(
-                pred_dci,
-                pred_soh,
-                s=30,
-                color="tab:red",
-                alpha=0.7,
-                label="Predicted SoH",
-                zorder=3,
-                edgecolors="none",
-            )
-
-            ax.set_xlabel("Discharge Cycles")
-            ax.set_ylabel("SoH")
-            ax.legend(fontsize=9, loc="best")
-            ax.grid(True, alpha=0.3)
-
-            out_traj = CONFERENCE_DIR / "test_trajectory.pdf"
-            fig.savefig(out_traj, bbox_inches="tight")
-            plt.close(fig)
-            print(f"Plot saved -> {out_traj}")
-        else:
-            print("Not enough reference points to fit SoH curve for trajectory plot.")
-
-    # oxford zero-shot results
-    oxford_repo = InstanceRepository(provider=EVALUATION_PROVIDER)
-    oxford_instances = oxford_repo.load(OXFORD_MCUS)
-    print(f"Loaded {len(oxford_instances)} Oxford instances")
-
-    oxford_dataset = EstimatorDataset(oxford_instances, stats)
-    oxford_engine = InferenceEngine(client=client, dataset=oxford_dataset, stats=stats)
-    oxford_results = oxford_engine.run_predictions()
-
-    oxford_overall = MetricsAggregator.compute("Overall", oxford_results)
-
-    cell_groups = defaultdict(list)
-    for r in oxford_results:
-        cell_groups[r.instance.cell_id].append(r)
-
-    oxford_rows = [
-        TableRow(
-            cells=MetricsAggregator.compute(
-                f"Cell {cell_id.replace('cell', '')}", cell_groups[cell_id]
-            ).to_latex_cells()
-        )
-        for cell_id in sorted(cell_groups, key=lambda x: int(x.replace("cell", "")))
-    ]
-
-    LatexTable(
-        out_path=CONFERENCE_DIR / "oxford_results.tex",
-        caption="OXFORD DATASET ZERO-SHOT ESTIMATOR PERFORMANCE",
-        label="tab:oxford_results",
-        align="lcccccc",
-        headers=["Cell", *_TABLE_HEADER],
-        items=[
-            *oxford_rows,
-            HLine(),
-            TableRow(cells=oxford_overall.to_latex_cells(), bold=True),
-        ],
-    ).write()
 
 
 if __name__ == "__main__":

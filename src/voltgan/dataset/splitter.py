@@ -7,24 +7,22 @@ from voltgan.dataset.instance import DischargeInstance
 
 
 @dataclass(frozen=True)
-class OxfordSplit:
+class Split:
     fine_tune: list[DischargeInstance]
     validation: list[DischargeInstance]
     eval: list[DischargeInstance]
 
 
-class OxfordSplitter:
+class DatasetSplitter:
     """
-    Splits Oxford instances per cell along the dci axis into
+    Splits instances per cell along the dci axis into
     fine_tune / validation / eval ranges, driven by percentages.
     """
 
     def __init__(self, instances: list[DischargeInstance]):
         self.instances = instances
 
-    def split(
-        self, training_percentage: float, validation_percentage: float
-    ) -> OxfordSplit:
+    def split(self, training_percentage: float, validation_percentage: float) -> Split:
         if training_percentage < 0 or validation_percentage < 0:
             raise ValueError("Split percentages must be non-negative.")
         if training_percentage + validation_percentage > 1.0:
@@ -66,4 +64,4 @@ class OxfordSplitter:
                 f"{len(eval_slice)} eval"
             )
 
-        return OxfordSplit(fine_tune=fine_tune, validation=validation, eval=eval_)
+        return Split(fine_tune=fine_tune, validation=validation, eval=eval_)

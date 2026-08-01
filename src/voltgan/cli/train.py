@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import random
 import signal
 import sys
 
@@ -59,6 +60,7 @@ def main() -> None:
     signal.signal(signal.SIGINT, _handle_sigint)
 
     torch.manual_seed(RANDOM_SEED)
+    random.seed(RANDOM_SEED)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
@@ -67,6 +69,8 @@ def main() -> None:
 
     train_instances = repo.load(TRAINING_MCUS, max_length=MAX_SEQUENCE_LENGTH)
     val_instances = repo.load(VALIDATION_MCUS, max_length=MAX_SEQUENCE_LENGTH)
+
+    random.shuffle(val_instances)
 
     with open(STATS_PATH) as f:
         stats = json.load(f)

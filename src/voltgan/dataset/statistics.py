@@ -124,7 +124,6 @@ class StatisticsCalculator:
         for key in stat_keys:
             concat_data = np.concatenate(data_buffers[key])
 
-            # Calculate percentiles and cast to native Python floats for JSON serialization
             p01 = float(np.percentile(concat_data, 1))
             p99 = float(np.percentile(concat_data, 99))
 
@@ -158,7 +157,6 @@ class StatisticsCalculator:
 
         headers = ["Channel", col_names[0], col_names[1]]
 
-        # Determine the correct dictionary keys based on what was calculated
         k1 = "mean" if "mean" in next(iter(stats.values())) else "p01"
         k2 = (
             "standard_deviation"

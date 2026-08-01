@@ -24,7 +24,6 @@ class InferenceEngine:
         self.dataset = dataset
         self.batch_size = batch_size
 
-        # 1. Update to use the Robust Min-Max percentiles instead of mean/std
         self.soh_p01 = stats[SOH_KEY]["p01"]
         self.soh_p99 = stats[SOH_KEY]["p99"]
 
@@ -44,7 +43,6 @@ class InferenceEngine:
         if denom == 0:
             denom = 1e-8
 
-        # Inverse of: 2.0 * (x - p01) / denom - 1.0
         return ((scaled_preds + 1.0) / 2.0) * denom + self.soh_p01
 
     def run_batch_predictions(
@@ -61,7 +59,6 @@ class InferenceEngine:
 
         raw_scaled = np.concatenate(parts)
 
-        # 2. Return the unscaled values
         return self._unscale_predictions(raw_scaled)
 
     def run_predictions(self) -> list[PredictionResult]:
@@ -78,7 +75,6 @@ class InferenceEngine:
 
         raw_scaled_preds = np.concatenate(all_preds)
 
-        # 3. Unscale the predictions before aggregating
         unscaled_preds = self._unscale_predictions(raw_scaled_preds)
 
         window_to_inst = [id(inst) for inst, _, _ in self.dataset.windows]

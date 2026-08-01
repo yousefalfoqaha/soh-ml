@@ -1,6 +1,6 @@
 import sys
 
-_VALID = {"ingest", "dataset", "inspect", "stats", "train", "evaluation"}
+_VALID = {"ingest", "dataset", "inspect", "stats", "train", "finetune", "evaluation"}
 
 _USAGE = """\
 Usage: python -m voltgan <command>
@@ -11,6 +11,7 @@ Commands:
   inspect <hdf-rel-path>      Inspect structure and contents of an HDF file
   stats                       Calculate training statistics
   train                       Train a model
+  finetune                    Finetune the model on the Oxford dataset
   evaluation                  Run estimator evaluation + PFI + Oxford tables/charts
 """
 
@@ -34,6 +35,8 @@ def _main() -> None:
             from voltgan.cli.stats import main as _main_fn
         case "train":
             from voltgan.cli.train import main as _main_fn
+        case "finetune":
+            from voltgan.cli.finetune import main as _main_fn
         case "evaluation":
             from voltgan.cli.evaluation import main as _main_fn
         case _:
