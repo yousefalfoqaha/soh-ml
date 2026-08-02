@@ -14,11 +14,19 @@
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 
+% TABLES
 % discharge protocol distribution/temperature (with soh ranges) replace in table 1
+
+% DIAGRAMS
 % training loop diagram
 % maybe data pipeline diagram
 % actual model architecture diagram instead of placeholder
+% finetune diagram (frozen layers)
+
+% EXPLANATION
+% add MSE objective
 % explain lr scheduler
+% oxford dataset intro, soh labelling, finetune train/val/test split and setup
 % intro + abstract + related works + conclusion
 % references
 
@@ -121,7 +129,6 @@ The components of the pre-processing pipeline are as follows:
 	\item \textbf{Extract discharge instances:} Using discharge start/end signals provided by the testing platform to filter only discharge instances.
 	\item \textbf{Hierarchical Data Format (HDF5):} Converting each discharge instance away from MF4 to HDF5 allows for O(1) disk reads when loading the dataset, while also only taking primary channels (V, I, T, $T_{amb}$) to reduce memory usage.
 	\item \textbf{Static conditions metadata:} $T_{amb}$ is controlled by the test platform at a fixed value for each discharge instance, thus an average value was taken and stored as an HDF5 attribute.
-	\item \textbf{Statistics metadata:} Statistics (mean, $M_2$, bounds) are stored as HDF5 attributes for standardization.
 	\item \textbf{SoH metadata:} SoH is calculated for each discharge instance and written to HDF5 attributes (detailed below in Section D).
 \end{enumerate}
 
@@ -132,7 +139,7 @@ Raw SoH for each discharge instance was computed via Coulomb counting:
 	\text{SoH}_{\text{raw}} = \frac{\int_{t_{\text{start}}}^{t_{\text{end}}} |I(t)| \, dt}{C_{\text{nom}}}
 \end{equation}
 
-Because measured capacity varies with discharge rate and $T_{\text{amb}}$, reference points were filtered from $1\text{C}$ discharge cycles at $25^\circ\text{C}$. A 4th degree polynomial was then fitted over the cycle indices to establish SoH trajectories for each MCU (Fig. \ref{fig:soh_trajectories}). Reference-only SoH ranges and cycle counts are found in Table \ref{tab:mcu_soh_summary}.
+Measured capacity depends on discharge rate and $T_{\text{amb}}$, so raw SoH is not directly comparable across instances. Discharge instances at $1\text{C}$ and $25^\circ\text{C}$, the only condition common to all phases (Table \ref{tab:phase_soh_summary}), are used as reference points. A 4th degree polynomial is fit over cycle index to these reference points, giving a per-MCU SoH trajectory (Fig. \ref{fig:soh_trajectories}). Reference-point SoH ranges and cycle counts are given in Table \ref{tab:mcu_soh_summary}.
 
 
 \begin{figure}[H]
@@ -144,13 +151,14 @@ Because measured capacity varies with discharge rate and $T_{\text{amb}}$, refer
 \input{mcu_soh_summary.tex}
 
 \subsection{Statistics}
-Global dataset statistics are computed across all $N = \sum N_i$ time steps using the pre-aggregated file metadata ($N_i$, $\mu_i$, $M_{2,i}$) for normalization:
+
+Mean/std normalization is sensitive to the dataset's extreme temperature and aging conditions, where wide value swings are part of the distribution rather than outliers. Robust min-max scaling is used instead for training stability, bounded by the $1^{\text{st}}$ and $99^{\text{th}}$ percentiles ($p_{01}$, $p_{99}$) of each channel across all $N$ time steps:
 
 \begin{equation}
-	\mu = \frac{\sum_i N_i \mu_i}{N}, \quad \sigma = \sqrt{\frac{\sum_i M_{2,i} + \sum_i N_i \mu_i^2 - N \mu^2}{N}}
+	x_{\text{norm}} = \frac{x - p_{01}}{p_{99} - p_{01}}
 \end{equation}
 
-For scalar attributes, sample-wise mean and variance are calculated across all $K$ discharge instances (Table \ref{tab:feature_stats}).
+Percentile bounds per feature are given in Table \ref{tab:feature_stats}.
 
 \input{feature_stats.tex}
 
@@ -164,13 +172,19 @@ Given a sequence of $V$, $I$, and $T$ over a discharge instance, conditioned on 
 \end{equation}
 
 \subsection{Estimator Architecture}
-Input sequences pass through three 1D Convolutional Neural Network (1D-CNN) blocks (32, 64, 128 channels; GroupNorm, GELU, dropout), followed by Feature-wise Linear Modulation (FiLM) conditioning on $T_{\text{amb}}$:
+Input sequences pass through a stem 1D Convolutional Neural Network (1D-CNN) layer followed by two strided 1D-CNN blocks ($2\times$, $4\times$ base channels; GroupNorm, LeakyReLU, dropout), followed by Feature-wise Linear Modulation (FiLM) conditioning on $T_{\text{amb}}$:
 
 \begin{equation}
-	\text{FiLM}(h) = \gamma(T_{\text{amb}}) \odot h + \beta(T_{\text{amb}})
+	\text{FiLM}(h) = (1 + \gamma(T_{\text{amb}})) \odot h + \beta(T_{\text{amb}})
 \end{equation}
 
-where $\gamma$ and $\beta$ are learned affine parameters. The modulated features pass through a 2-layer bidirectional Gated Recurrent Unit (BiGRU), whose final hidden states are concatenated and projected to a scalar SoH estimate.
+where $\gamma$ and $\beta$ are learned affine parameters. The modulated features pass through a 2-layer bidirectional Gated Recurrent Unit (BiGRU). An additive attention mechanism then pools over the GRU output timesteps:
+
+\begin{equation}
+	\alpha_t = \frac{\exp(w^\top \tanh(W h_t))}{\sum_{\tau} \exp(w^\top \tanh(W h_\tau))}, \quad z = \sum_t \alpha_t h_t
+\end{equation}
+
+where $h_t$ is the BiGRU output at timestep $t$. The pooled representation $z$ is projected to a scalar SoH estimate.
 
 \begin{figure}[H]
 	\centerline{\includegraphics[width=\columnwidth]{architecture.pdf}}
