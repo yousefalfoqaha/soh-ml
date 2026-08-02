@@ -31,19 +31,19 @@ from voltgan.utils import HLine, LatexTable, TableRow
 _DISCHARGE_PROTOCOL_PANELS = [
     (
         "Constant",
-        "/mnt/ssd/datasets/wuppertal/hdf/wuppertal/mcu5/Cyc026_Initial_Constant_1.0C_Temp25_20241022.hdf",
+        "Cyc026_Initial_Constant_1.0C_Temp25_20241022.hdf",
     ),
     (
         "Pulse",
-        "2024-10-24_15.20.25 Pulse_Test_SamsungINR2170050E_Cell 5 Zelltester_1.hdf",
+        "Cyc009_Initial_Pulse_1.0C_Temp25_20240910.hdf",
     ),
     (
         "HPPC",
-        "HPPC 2024-09-15_16.21.33 Pulse_Test_SamsungINR2170050E_Cell 5 Zelltester_1_3.hdf",
+        "Cyc020_Initial_HPPC_Temp25_20240915.hdf",
     ),
     (
         "WLTC",
-        "WLTC 2024-09-07 21.45.06 Pulse_Test_SamsungINR2170050E_Cell 5 Zelltester_1.hdf",
+        "Cyc029_Initial_WLTC_Temp25_20241024.hdf",
     ),
 ]
 _MAX_PULSE_STEPS = 1000
@@ -180,13 +180,12 @@ def main() -> None:
     panels = dict(_DISCHARGE_PROTOCOL_PANELS)
 
     for name, ax2 in positions:
-        filename_str = panels[name]
-        target_name = Path(filename_str).name
+        filename = panels[name]
 
-        instance = next((i for i in instances if i.filepath.name == target_name), None)
+        instance = next((i for i in instances if i.filepath.name == filename), None)
 
         if not instance:
-            print(f"Warning: Panel file {target_name} not found in loaded instances.")
+            print(f"Warning: Panel file {filename} not found in loaded instances.")
             continue
 
         current = instance.current

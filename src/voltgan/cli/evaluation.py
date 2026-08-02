@@ -194,8 +194,7 @@ def main() -> None:
 
     LatexTable(
         out_path=CONFERENCE_DIR / "oxford_results.tex",
-        caption="OXFORD DATASET PERFORMANCE: ZERO-SHOT VS. FINE-TUNED "
-        "(EVALUATED ON HELD-OUT TEST CELLS)",
+        caption="OXFORD DATASET PERFORMANCE: ZERO-SHOT VS. FINE-TUNED",
         label="tab:oxford_results",
         align="lcccccc",
         headers=["Model", *_TABLE_HEADER],
@@ -204,6 +203,55 @@ def main() -> None:
             TableRow(cells=finetuned_metrics.to_latex_cells(), bold=True),
         ],
     ).write()
+
+    # oxford trajectory plotting: zero-shot vs fine-tuned
+    fig3, axes3 = plt.subplots(
+        1, 2, figsize=(10, 4), sharey=False, layout="constrained"
+    )
+    panels3 = [
+        ("Zero-Shot", zero_shot_results, axes3[0]),
+        ("Fine-Tuned", finetuned_results, axes3[1]),
+    ]
+
+    for title, cell_results, ax3 in panels3:
+        dci = np.array([r.instance.dci for r in cell_results], dtype=float)
+        real_soh = np.array([r.instance.curve_soh for r in cell_results], dtype=float)
+        pred_soh = np.array(
+            [
+                getattr(
+                    r,
+                    "prediction",
+                    getattr(r, "predicted_soh", getattr(r, "pred", 0.0)),
+                )
+                for r in cell_results
+            ],
+            dtype=float,
+        )
+
+        order = np.argsort(dci)
+        dci, real_soh, pred_soh = dci[order], real_soh[order], pred_soh[order]
+
+        ax3.plot(dci, real_soh, color="tab:blue", lw=2, label="Real SoH", zorder=2)
+        ax3.scatter(
+            dci,
+            pred_soh,
+            s=30,
+            color="tab:red",
+            alpha=0.7,
+            label="Predicted SoH",
+            zorder=3,
+            edgecolors="none",
+        )
+        ax3.set_title(title, fontsize=10, fontweight="bold")
+        ax3.set_xlabel("Discharge Cycles")
+        ax3.set_ylabel("SoH")
+        ax3.legend(fontsize=9, loc="best")
+        ax3.grid(True, alpha=0.3)
+
+    out_oxford = CONFERENCE_DIR / "oxford_trajectory.pdf"
+    fig3.savefig(out_oxford, bbox_inches="tight")
+    plt.close(fig3)
+    print(f"Plot saved -> {out_oxford}")
 
     # testing trajectory plotting (Updated to TESTING_MCUS)
     test_results = [r for r in results if r.instance.cell_id in TESTING_MCUS]

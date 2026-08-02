@@ -22,8 +22,10 @@
 % maybe data pipeline diagram
 % actual model architecture diagram instead of placeholder
 % finetune diagram (frozen layers)
+% diagram showing pfi bucketing
 
 % EXPLANATION
+% rasterizing
 % add MSE objective
 % explain lr scheduler
 % oxford dataset intro, soh labelling, finetune train/val/test split and setup
@@ -72,7 +74,7 @@ The dataset used was obtained from the Scienlab SL1007A charge-discharge testing
 			\hline
 			\textbf{Parameter}                       & \textbf{Value}                   \\
 			\hline
-			Nominal capacity ($C_{\text{nom}}$)      & $4.9\,\text{Ah}$                 \\
+			Nominal capacity ($C_{\text{nom}}$)      & $5.0\,\text{Ah}$                 \\
 			Upper cut-off voltage ($U_{\text{max}}$) & $4.2\,\text{V}$                  \\
 			Lower cut-off voltage ($U_{\text{min}}$) & $2.5\,\text{V}$                  \\
 			Max. discharge current                   & $-20\,\text{A}$ ($-4.0\text{C}$) \\
@@ -152,13 +154,12 @@ Measured capacity depends on discharge rate and $T_{\text{amb}}$, so raw SoH is 
 
 \subsection{Statistics}
 
-Mean/std normalization is sensitive to the dataset's extreme temperature and aging conditions, where wide value swings are part of the distribution rather than outliers. Robust min-max scaling is used instead for training stability, bounded by the $1^{\text{st}}$ and $99^{\text{th}}$ percentiles ($p_{01}$, $p_{99}$) of each channel across all $N$ time steps:
+Mean/std normalization is sensitive to the dataset's extreme temperature and aging conditions, where wide value swings are not considered outliers. Robust min-max scaling is used instead for training stability, bounded by the $1^{\text{st}}$ and $99^{\text{th}}$ percentiles ($p_{01}$, $p_{99}$) of each channel across all 14,262,367 time steps. Percentile bounds per feature are given in Table \ref{tab:feature_stats}.
 
 \begin{equation}
 	x_{\text{norm}} = \frac{x - p_{01}}{p_{99} - p_{01}}
 \end{equation}
 
-Percentile bounds per feature are given in Table \ref{tab:feature_stats}.
 
 \input{feature_stats.tex}
 
@@ -172,7 +173,8 @@ Given a sequence of $V$, $I$, and $T$ over a discharge instance, conditioned on 
 \end{equation}
 
 \subsection{Estimator Architecture}
-Input sequences pass through a stem 1D Convolutional Neural Network (1D-CNN) layer followed by two strided 1D-CNN blocks ($2\times$, $4\times$ base channels; GroupNorm, LeakyReLU, dropout), followed by Feature-wise Linear Modulation (FiLM) conditioning on $T_{\text{amb}}$:
+
+A window of sequences $V$, $I$, and $T$ of length $N$ pass through a stem 1D Convolutional Neural Network (1D-CNN) layer followed by two strided 1D-CNN blocks ($2\times$, $4\times$ base channels; GroupNorm, LeakyReLU, dropout), followed by Feature-wise Linear Modulation (FiLM) conditioning on $T_{\text{amb}}$:
 
 \begin{equation}
 	\text{FiLM}(h) = (1 + \gamma(T_{\text{amb}})) \odot h + \beta(T_{\text{amb}})
@@ -194,12 +196,12 @@ where $h_t$ is the BiGRU output at timestep $t$. The pooled representation $z$ i
 
 
 \subsection{Training Setup}
-The dataset was sliced into 1500-timestep windows (\textasciitilde15 min) with stride 500. The eight MCUs were split 6/1/1 into training, validation, and test sets. MCUs 3 and 8 were held out for validation and testing, respectively, as their SoH bounds fall within the training range, testing interpolation rather than extrapolation. All input sequences and conditions were normalized. Estimator hyperparameters are given in Table \ref{tab:estimator_hparams}.
+The dataset was sliced into 1500-timestep windows (\textasciitilde15 min) with a 1000-timestep stride. The eight MCUs were split 6/1/1 into training, validation, and test sets. MCUs 2 and 7 were held out for validation and testing, respectively, as their SoH bounds fall within the training range, testing interpolation rather than extrapolation. All input sequences and conditions were normalized using robust min-max scaling. The Estimator's hyperparameters are given in Table \ref{tab:estimator_hparams}.
 
 \input{hyperparameters.tex}
 
 \subsection{Results and Discussion}
-Evaluation was performed on the validation and testing MCUs across phases (Table \ref{tab:baseline_results}) and across temperature bands and discharge protocols (Table \ref{tab:temp_protocol_results}).
+Evaluation was performed on the testing MCU across phases (Table \ref{tab:baseline_results}) and across temperature bands and discharge protocols (Table \ref{tab:temp_protocol_results}).
 
 \input{baseline_results.tex}
 
@@ -225,6 +227,16 @@ The validation MCU's SoH trajectory with predicted points is shown in Fig.~\ref{
 	\label{fig:test_trajectory}
 \end{figure}
 
+\subsection{Oxford Dataset}
+
+\input{oxford_results.tex}
+
+\begin{figure}[H]
+	\centerline{\includegraphics[width=\columnwidth]{oxford_trajectory.pdf}}
+	\caption{Validation MCU SoH trajectory with predicted SoH points.}
+	\label{fig:oxford_trajectory}
+\end{figure}
+
 \subsection{Permutation Feature Importance (PFI)}
 
 PFI was used to measure which inputs the model relies on for its predictions. PFI shuffles one feature at a time and measures the resulting drop in performance.
@@ -244,6 +256,6 @@ Shuffling across the entire dataset ignores that each discharge protocol constra
 
 $I$ and $T_{amb}$ are consistently the most important features across protocols. $V$ is also an important feature across all protocols. $T_{amb}$ and $T$ show an interesting relationship with protocol dynamics: under Constant discharge, both features are utilized ($+0.0130$), while under HPPC and Pulse, $T_{amb}$ rises ($+0.1383$, $+0.1563$) as $T$ drops to near zero or negative. This is likely due to stable currents allowing $T$ to accumulate larger deltas, which is a more useful signal compared to the fixed ambient condition, whereas under highly dynamic current profiles, the cells can dissipate accumulated heat, so the model only has $T_{amb}$ as a proxy for temperature.
 
-\input{oxford_results.tex}
+
 
 \end{document}
