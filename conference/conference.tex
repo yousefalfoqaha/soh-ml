@@ -152,7 +152,7 @@ Measured capacity depends on discharge rate and $T_{\text{amb}}$, so raw SoH is 
 
 \input{mcu_soh_summary.tex}
 
-\subsection{Statistics}
+\subsection{Feature Scaling}
 
 Mean/std normalization is sensitive to the dataset's extreme temperature and aging conditions, where wide value swings are not considered outliers. Robust min-max scaling is used instead for training stability, bounded by the $1^{\text{st}}$ and $99^{\text{th}}$ percentiles ($p_{01}$, $p_{99}$) of each channel across all 14,262,367 time steps. Percentile bounds per feature are given in Table \ref{tab:feature_stats}.
 
