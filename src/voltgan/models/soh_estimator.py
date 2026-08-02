@@ -151,9 +151,6 @@ class SohEstimatorClient:
         for param in self.model.parameters():
             param.requires_grad_(False)
 
-        # for param in self.model.conv_stack[0].parameters():
-        #     param.requires_grad_(True)
-
         for param in self.model.attn.parameters():
             param.requires_grad_(True)
 

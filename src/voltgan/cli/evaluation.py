@@ -12,7 +12,13 @@ import torch
 
 from voltgan.config import (
     CONFERENCE_DIR,
+    DROPOUT,
+    ESTIMATOR_BASE_CHANNELS,
     ESTIMATOR_CHECKPOINT_PATH,
+    ESTIMATOR_GRU_HIDDEN_SIZE,
+    ESTIMATOR_GRU_N_LAYERS,
+    ESTIMATOR_KERNEL_SIZE,
+    ESTIMATOR_STRIDE,
     EVALUATION_PROVIDER,
     FINETUNED_CHECKPOINT_PATH,
     MAX_SEQUENCE_LENGTH,
@@ -53,6 +59,23 @@ _PFI_FEATURE_SPECS = [
 def main() -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Device: {device}")
+
+    # hyperparameter table
+    LatexTable(
+        out_path=CONFERENCE_DIR / "hyperparameters.tex",
+        caption="ESTIMATOR HYPERPARAMETERS",
+        label="tab:estimator_hparams",
+        align="lc",
+        headers=["Hyperparameter", "Value"],
+        items=[
+            TableRow(cells=["Conv. base channels", str(ESTIMATOR_BASE_CHANNELS)]),
+            TableRow(cells=["Conv. kernel size", str(ESTIMATOR_KERNEL_SIZE)]),
+            TableRow(cells=["Conv. stride", str(ESTIMATOR_STRIDE)]),
+            TableRow(cells=["GRU hidden size", str(ESTIMATOR_GRU_HIDDEN_SIZE)]),
+            TableRow(cells=["GRU layers", str(ESTIMATOR_GRU_N_LAYERS)]),
+            TableRow(cells=["Dropout", str(DROPOUT)]),
+        ],
+    ).write()
 
     with open(STATS_PATH) as f:
         stats = json.load(f)

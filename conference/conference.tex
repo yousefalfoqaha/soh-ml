@@ -182,27 +182,7 @@ where $\gamma$ and $\beta$ are learned affine parameters. The modulated features
 \subsection{Training Setup}
 The dataset was sliced into 1500-timestep windows (\textasciitilde15 min) with stride 500. The eight MCUs were split 6/1/1 into training, validation, and test sets. MCUs 3 and 8 were held out for validation and testing, respectively, as their SoH bounds fall within the training range, testing interpolation rather than extrapolation. All input sequences and conditions were normalized. Estimator hyperparameters are given in Table \ref{tab:estimator_hparams}.
 
-\begin{table}[H]
-	\caption{ESTIMATOR HYPERPARAMETERS}
-	\label{tab:estimator_hparams}
-	\begin{center}
-		\begin{tabular}{lc}
-			\hline
-			\textbf{Hyperparameter} & \textbf{Value} \\
-			\hline
-			Conv. base channels     & $64$           \\
-			Conv. kernel size       & $7$            \\
-			Conv. stride            & $2$            \\
-			GRU hidden size         & $128$          \\
-			GRU layers              & $2$            \\
-			Dropout                 & $0.1$          \\
-			Batch size              & $512$          \\
-			Epochs                  & $150$          \\
-			Learning rate           & $0.0005$       \\
-			\hline
-		\end{tabular}
-	\end{center}
-\end{table}
+\input{hyperparameters.tex}
 
 \subsection{Results and Discussion}
 Evaluation was performed on the validation and testing MCUs across phases (Table \ref{tab:baseline_results}) and across temperature bands and discharge protocols (Table \ref{tab:temp_protocol_results}).
