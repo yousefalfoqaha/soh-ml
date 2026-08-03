@@ -25,8 +25,6 @@
 % diagram showing pfi bucketing
 
 % EXPLANATION
-% rasterizing
-% add MSE objective
 % oxford dataset intro, soh labelling, finetune train/val/test split and setup
 % intro + abstract + related works + conclusion
 % references
@@ -128,6 +126,7 @@ The components of the pre-processing pipeline are as follows:
 
 \begin{enumerate}
 	\item \textbf{Extract discharge cycles:} Using discharge start/end signals provided by the testing platform to filter only discharge cycles.
+    \item \textbf{Resampling and Channel Alignment:} Raw signals recorded by the test platform at up to $1\text{~kHz}$ ($1\text{~ms}$) were downsampled to a uniform $1\text{~Hz}$ ($1\text{~s}$). This eliminates sample-rate discrepancies across asynchronous channels in the raw MF4 files.
 	\item \textbf{Hierarchical Data Format (HDF5):} Converting each discharge cycle away from MF4 to HDF5 allows for O(1) disk reads when loading the dataset, while also only taking primary channels (V, I, T, $T_{amb}$) to reduce memory usage.
 	\item \textbf{Ambient temperature:} $T_{amb}$ is controlled by the test platform at a fixed value for each discharge cycle, thus an average value was taken and stored as an HDF5 attribute.
 	\item \textbf{SoH labelling:} Raw SoH is calculated for each discharge cycle and written to as an HDF5 attribute.
@@ -209,7 +208,7 @@ Evaluation was performed on the testing MCU across phases (Table \ref{tab:baseli
 
 \input{baseline_results.tex}
 
-$R^2$ is negative for Initial ($-0.71$), an artifact of its narrow SoH range ($91.8$--$96.2\%$): with little target variance, $R^2$ amplifies residual error and becomes uninformative, so RMSE and \%Err are the meaningful metrics here. Most overall metrics derive from the aging phase, which achieves low error, likely due to limited variance in discharge protocol (1C discharge at 25\textdegree C).
+$R^2$ is negative for Initial ($-0.71$), an artifact of its narrow SoH range ($91.8$--$96.2\%$): with little target variance, $R^2$ amplifies residual error and becomes uninformative. Therefore, RMSE and \%Err are the meaningful metrics here. Most overall metrics derive from the aging phase, which achieves low error, likely due to limited variance in discharge protocol (1C discharge at 25\textdegree C).
 
 Initial reaches $1.2\%$ error (RMSE $0.016$). Aging is the strongest phase ($R^2 = 0.89$, $1.2\%$ error, RMSE $0.013$): its constant 1C discharge yields a consistent waveform the CNN/BiGRU exploits, while still tracking declining SoH across discharges.
 
@@ -223,42 +222,113 @@ Within each temperature band, the estimator performs consistently across the SoH
 
 Across discharge protocols, the model generalizes well, with each protocol spanning multiple temperature bands (Table~\ref{tab:phase_soh_summary}). Constant and HPPC achieve the highest fits ($R^2 = 0.92$ and $0.99$), and Pulse follows ($R^2 = 0.95$). WLTC has an $R^2$ of -0.11, but this reflects $3$ cycles restricted to the Initial phase, giving a narrow SoH band ($92.1$--$95.3\%$) (Table~\ref{tab:phase_soh_summary}).
 
-The validation MCU's SoH trajectory with predicted points is shown in Fig.~\ref{fig:test_trajectory}.
+The testing MCU's SoH trajectory with predicted points is shown in Fig.~\ref{fig:test_trajectory}.
 
 \begin{figure}[H]
 	\centerline{\includegraphics[width=\columnwidth]{test_trajectory.pdf}}
-	\caption{Validation MCU SoH trajectory with predicted SoH points.}
+	\caption{Testing MCU SoH trajectory with predicted SoH points.}
 	\label{fig:test_trajectory}
 \end{figure}
 
-\subsection{Oxford Dataset}
+\section{Cross-Dataset Validation}
+
+\subsection{Oxford Battery Degredation Dataset 1}
+
+To evaluate cross-chemistry from Lithium Nickel Manganese Cobalt Oxide (NMC) to Lithium Cobalt Oxide (LCO) and cross-form-factor generalization, the model was fine-tuned on the Oxford Battery Degradation Dataset 1. The dataset comprises eight Kokam $740\,\text{mAh}$ pouch cells (SLPB526495), presenting a significant distribution shift from the Samsung INR21700-50E cylindrical cells ($5.0\,\text{Ah}$) used for primary training. The Oxford dataset cell specifications are listen in Table~\ref{tab:oxford_cell_specs}.
+
+\begin{table}[H]
+    \caption{OXFORD CELL SPECIFICATIONS}
+    \label{tab:oxford_cell_specs}
+    \begin{center}
+        \begin{tabular}{lc}
+            \hline
+            \textbf{Parameter}                        & \textbf{Value}                   \\
+            \hline
+            Cell model                                & Kokam SLPB526495                 \\
+            Form factor / Chemistry                   & Pouch / LCO                      \\
+            Nominal capacity ($C_{\text{nom}}$)       & $740\,\text{mAh}$                \\
+            Upper cut-off voltage ($U_{\text{max}}$)  & $4.2\,\text{V}$                  \\
+            Lower cut-off voltage ($U_{\text{min}}$)  & $2.7\,\text{V}$                  \\
+            Max. discharge current                    & $1.48\,\text{A}$ ($2.0\text{C}$) \\
+            Max. charge current                       & $0.74\,\text{A}$ ($1.0\text{C}$) \\
+            Testing temperature                       & $40\,^{\circ}\text{C}$           \\
+            State of charge range                     & $0$ to $100\,\%$                 \\
+            \hline
+        \end{tabular}
+    \end{center}
+\end{table}
+
+\subsection{SoH Labeling}
+
+Ground-truth SoH labeling was computed via Coulomb counting. Because all Oxford discharge sequences were recorded under uniform conditions ($1\text{C}$ discharge rate at $40^\circ\text{C}$), the raw calculated values were directly adopted as target labels without requiring polynomial trajectory fitting.
+
+\begin{table}[H]
+    \caption{Oxford Cell SoH Range and Cycle Count}
+    \label{tab:oxford_soh_summary}
+    \begin{center}
+        \footnotesize
+        \begin{tabular}{lcc}
+            \hline
+            \textbf{Cell} & \textbf{SoH Range (\%)} & \textbf{Cycles} \\
+            \hline
+            Cell 1 & $100.0$--$82.1$ & 82 \\
+            Cell 2 & $100.0$--$81.4$ & 82 \\
+            Cell 3 & $100.0$--$83.5$ & 82 \\
+            Cell 4 & $100.0$--$82.9$ & 82 \\
+            Cell 5 & $100.0$--$84.1$ & 82 \\
+            Cell 6 & $100.0$--$83.0$ & 82 \\
+            Cell 7 & $100.0$--$82.5$ & 82 \\
+            Cell 8 & $100.0$--$81.9$ & 82 \\
+            \hline
+        \end{tabular}
+    \end{center}
+\end{table}
+
+\subsection{Fine-Tuning Setup}
+
+To evaluate whether the feature extraction backbone captured universal degradation dynamics, the 1D-CNN, FiLM, and BiGRU layers were frozen, leaving only the attention pooling mechanism and output regression head open for fine-tuning. The eight cells were partitioned into a 6/1/1 split, allocating Cells 1--6 for fine-tuning, Cell 7 for validation, and Cell 8 for testing (Table~\ref{tab:oxford_soh_summary}). Feature scaling bounds and hyperparameter settings were kept identical to the primary training setup.
+
+\subsection{Results}
+
+Evaluating the model in a zero-shot setting yields severe performance degradation, resulting in an RMSE of $0.406$ ($46.8\%$ error) and an $R^2$ of $-36.66$ (Table~\ref{tab:oxford_results}). This offset is expected due to the significant domain shift across nominal capacity ($5.0\,\text{Ah}$ to $740\,\text{mAh}$), cathode chemistry (NMC to LCO), and cell form factor (cylindrical to pouch).
+
+However, unfreezing only the attention pooling mechanism and output regression head resolves this domain discrepancy. Upon fine-tuning, performance improves dramatically, achieving an RMSE of $0.008$, an MAE of $0.006$, an $R^2$ of $0.99$, and reducing the mean percentage error to $0.8\%$ across all 76 evaluation cycles. 
 
 \input{oxford_results.tex}
 
+As shown in Fig.~\ref{fig:oxford_trajectory}, the fine-tuned predictions closely track ground-truth capacity fade, confirming that the frozen 1D-CNN and BiGRU backbone encodes generalized, domain-invariant degradation features requiring only lightweight adaptation across chemistries.
+
 \begin{figure}[H]
-	\centerline{\includegraphics[width=\columnwidth]{oxford_trajectory.pdf}}
-	\caption{Validation MCU SoH trajectory with predicted SoH points.}
-	\label{fig:oxford_trajectory}
+    \centerline{\includegraphics[width=\columnwidth]{oxford_trajectory.pdf}}
+    \caption{Estimated versus ground-truth SoH trajectory on the testing cell.}
+    \label{fig:oxford_trajectory}
 \end{figure}
 
-\subsection{Permutation Feature Importance (PFI)}
 
-PFI was used to measure which inputs the model relies on for its predictions. PFI shuffles one feature at a time and measures the resulting drop in performance.
+\section{Feature Interpretability via Stratified PFI}
+\label{sec:pfi_analysis}
+
+Permutation Feature Importance (PFI) was conducted to measure which input features the model relies on for its predictions. Standard PFI measures performance degradation when an individual feature channel is permuted:
 \begin{equation}
-	\Delta \text{RMSE}_{j} = \text{RMSE}_{\text{perm}(j)} - \text{RMSE}_{\text{base}}, \quad j \in \{I, V, T, T_{amb}\}
+    \Delta \text{RMSE}_{j} = \text{RMSE}_{\text{perm}(j)} - \text{RMSE}_{\text{base}}, \quad j \in \{V, I, T, T_{\text{amb}}\}
 \end{equation}
 
-Shuffling across the entire dataset ignores that each discharge protocol constrains the plausible range of every signal. To preserve physically valid combinations, stratification shuffles each feature only within its own protocol. Results are reported per protocol in Table~\ref{tab:pfi_results} and plotted in Fig. \ref{fig:pfi_importance}.
+However, permuting features across the unconstrained dataset generates physically invalid feature combinations, as each discharge protocol imposes strict boundaries on voltage and current dynamics. To preserve physical validity, a protocol-stratified PFI was implemented, permuting feature channels exclusively within their respective discharge protocols.
 
 \input{pfi_results.tex}
 
 \begin{figure}[H]
-	\centerline{\includegraphics[width=\columnwidth]{pfi_importance.pdf}}
-	\caption{PFI results over $I$, $V$, $T_{amb}$, $T$.}
-	\label{fig:pfi_importance}
+    \centerline{\includegraphics[width=\columnwidth]{pfi_importance.pdf}}
+    \caption{Protocol-stratified Permutation Feature Importance ($\Delta\text{RMSE}$) across input channels ($I, V, T, T_{\text{amb}}$).}
+    \label{fig:pfi_importance}
 \end{figure}
 
-$I$ and $T_{amb}$ are consistently the most important features across protocols. $V$ is also an important feature across all protocols. $T_{amb}$ and $T$ show an interesting relationship with protocol dynamics: under Constant discharge, both features are utilized ($+0.0130$), while under HPPC and Pulse, $T_{amb}$ rises ($+0.1383$, $+0.1563$) as $T$ drops to near zero or negative. This is likely due to stable currents allowing $T$ to accumulate larger deltas, which is a more useful signal compared to the fixed ambient condition, whereas under highly dynamic current profiles, the cells can dissipate accumulated heat, so the model only has $T_{amb}$ as a proxy for temperature.
+The stratified PFI results (Table~\ref{tab:pfi_results} and Fig.~\ref{fig:pfi_importance}) reveal key physical insights:
+\begin{itemize}
+    \item \textbf{Primary Electrochemical Signals:} Current ($I$) and voltage ($V$) consistently emerge as the most vital features across all protocols.
+    \item \textbf{Thermal Signal Interaction:} Under Constant discharge, sustained loads cause heat accumulation, leading the model to actively utilize cell surface temperature ($T$) ($\Delta\text{RMSE} = +0.0130$).
+    \item \textbf{Dynamic Dissipation Shift:} Under dynamic profiles (HPPC and Pulse), rapid current transitions allow localized heat dissipation, causing reliance on $T$ to drop. Concurrently, $T_{\text{amb}}$ importance increases ($\Delta\text{RMSE} = +0.1383$ and $+0.1563$), indicating that FiLM conditioning effectively anchors predictions to ambient baseline bounds when surface thermal signals fluctuate rapidly.
+\end{itemize}
 
 
 
