@@ -196,9 +196,12 @@ where $h_t$ is the BiGRU output at timestep $t$. The pooled representation $z$ i
 
 
 \subsection{Training Setup}
-The dataset was sliced into 1500-timestep windows (\textasciitilde15 min) with a 1000-timestep stride. The eight MCUs were split 6/1/1 into training, validation, and test sets. MCUs 2 and 7 were held out for validation and testing, respectively, as their SoH bounds fall within the training range, testing interpolation rather than extrapolation. All input sequences and conditions were normalized using robust min-max scaling. The Estimator's hyperparameters are given in Table \ref{tab:estimator_hparams}.
+
+The dataset was sliced into 1500-timestep windows (\textasciitilde15 min) with a 1000-timestep stride. The eight MCUs were split 6/1/1 into training, validation, and test sets. MCUs 2 and 7 were held out for validation and testing, respectively, as their SoH range ($95.6$--$67.5\%$) fall within the training range ($97.4$--$42.3\%$), testing interpolation rather than extrapolation. All input sequences and conditions were normalized using robust min-max scaling. The Estimator's hyperparameters are given in Table \ref{tab:estimator_hparams}.
 
 \input{hyperparameters.tex}
+
+The model was trained with the AdamW optimizer ($1e-2$ weight decay) with a batch size of 128 windows. Early stopping was used to halt training after 50 epochs of no improvement in the validation loss, and restoring the model with the best accuracy on the validation set. A ReduceLROnPlateau learning rate scheduler was used to reduce the initial $2e-2$ learning rate by a factor of $50\%$ ($1e-5$ minimum learning rate) with a patience of 15 epochs.
 
 \subsection{Results and Discussion}
 Evaluation was performed on the testing MCU across phases (Table \ref{tab:baseline_results}) and across temperature bands and discharge protocols (Table \ref{tab:temp_protocol_results}).
