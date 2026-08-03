@@ -27,7 +27,6 @@
 % EXPLANATION
 % rasterizing
 % add MSE objective
-% explain lr scheduler
 % oxford dataset intro, soh labelling, finetune train/val/test split and setup
 % intro + abstract + related works + conclusion
 % references
@@ -128,20 +127,20 @@ As per the dataset engineer's advice, voltage (V), current (A), temperature (T),
 The components of the pre-processing pipeline are as follows:
 
 \begin{enumerate}
-	\item \textbf{Extract discharge instances:} Using discharge start/end signals provided by the testing platform to filter only discharge instances.
-	\item \textbf{Hierarchical Data Format (HDF5):} Converting each discharge instance away from MF4 to HDF5 allows for O(1) disk reads when loading the dataset, while also only taking primary channels (V, I, T, $T_{amb}$) to reduce memory usage.
-	\item \textbf{Static conditions metadata:} $T_{amb}$ is controlled by the test platform at a fixed value for each discharge instance, thus an average value was taken and stored as an HDF5 attribute.
-	\item \textbf{SoH metadata:} SoH is calculated for each discharge instance and written to HDF5 attributes (detailed below in Section D).
+	\item \textbf{Extract discharge cycles:} Using discharge start/end signals provided by the testing platform to filter only discharge cycles.
+	\item \textbf{Hierarchical Data Format (HDF5):} Converting each discharge cycle away from MF4 to HDF5 allows for O(1) disk reads when loading the dataset, while also only taking primary channels (V, I, T, $T_{amb}$) to reduce memory usage.
+	\item \textbf{Ambient temperature:} $T_{amb}$ is controlled by the test platform at a fixed value for each discharge cycle, thus an average value was taken and stored as an HDF5 attribute.
+	\item \textbf{SoH labelling:} Raw SoH is calculated for each discharge cycle and written to as an HDF5 attribute.
 \end{enumerate}
 
 \subsection{SoH Labeling}
-Raw SoH for each discharge instance was computed via Coulomb counting:
+Raw SoH for each discharge cycle was computed via Coulomb counting:
 
 \begin{equation}
 	\text{SoH}_{\text{raw}} = \frac{\int_{t_{\text{start}}}^{t_{\text{end}}} |I(t)| \, dt}{C_{\text{nom}}}
 \end{equation}
 
-Measured capacity depends on discharge rate and $T_{\text{amb}}$, so raw SoH is not directly comparable across instances. Discharge instances at $1\text{C}$ and $25^\circ\text{C}$, the only condition common to all phases (Table \ref{tab:phase_soh_summary}), are used as reference points. A 4th degree polynomial is fit over cycle index to these reference points, giving a per-MCU SoH trajectory (Fig. \ref{fig:soh_trajectories}). Reference-point SoH ranges and cycle counts are given in Table \ref{tab:mcu_soh_summary}.
+Measured capacity depends on discharge rate and $T_{\text{amb}}$, so raw SoH is not directly comparable across cycles. Discharge cycles at $1\text{C}$ and $25^\circ\text{C}$, the only condition common to all phases (Table \ref{tab:phase_soh_summary}), are used as reference points. A 4th degree polynomial is fit over cycle index to these reference points, giving a per-MCU SoH trajectory (Fig. \ref{fig:soh_trajectories}). Reference-point SoH ranges and cycle counts are given in Table \ref{tab:mcu_soh_summary}.
 
 
 \begin{figure}[H]
@@ -166,7 +165,7 @@ Mean/std normalization is sensitive to the dataset's extreme temperature and agi
 \section{Methodology}
 
 \subsection{Problem Formulation}
-Given a sequence of $V$, $I$, and $T$ over a discharge instance, conditioned on $T_{\text{amb}}$, an estimator function $f(\cdot)$ predicts the cell's $\text{SoH}$:
+Given a sequence of $V$, $I$, and $T$ over a discharge cycle, conditioned on $T_{\text{amb}}$, an estimator function $f(\cdot)$ predicts the cell's $\text{SoH}$:
 
 \begin{equation}
 	\widehat{\text{SoH}} = f(V, I, T \mid T_{\text{amb}})
@@ -197,13 +196,15 @@ where $h_t$ is the BiGRU output at timestep $t$. The pooled representation $z$ i
 
 \subsection{Training Setup}
 
-The dataset was sliced into 1500-timestep windows (\textasciitilde15 min) with a 1000-timestep stride. The eight MCUs were split 6/1/1 into training, validation, and test sets. MCUs 2 and 7 were held out for validation and testing, respectively, as their SoH range ($95.6$--$67.5\%$) fall within the training range ($97.4$--$42.3\%$), testing interpolation rather than extrapolation. All input sequences and conditions were normalized using robust min-max scaling. The Estimator's hyperparameters are given in Table \ref{tab:estimator_hparams}.
+The raw sequences, which varied between a minimum of 1,500 and a maximum of 30,000 timesteps per cycle, were sliced into 1,500-timestep windows (\textasciitilde15 min) using a 1,000-timestep stride. The eight MCUs were split 6/1/1 into training, validation, and test sets. MCUs 2 and 7 were held out for validation and testing, respectively, as their SoH range ($95.6$--$67.5\%$) falls within the training range ($97.4$--$42.3\%$), evaluating interpolation rather than extrapolation. 
+
+In total, the training set comprised 1,071 cycles (7,227 windows), while the validation set contained 185 cycles (1,341 windows). All input sequences and conditions were normalized using robust min-max scaling. The Estimator's hyperparameters are given in Table \ref{tab:estimator_hparams}.
 
 \input{hyperparameters.tex}
 
-The model was trained with the AdamW optimizer ($1e-2$ weight decay) with a batch size of 128 windows. Early stopping was used to halt training after 50 epochs of no improvement in the validation loss, and restoring the model with the best accuracy on the validation set. A ReduceLROnPlateau learning rate scheduler was used to reduce the initial $2e-2$ learning rate by a factor of $50\%$ ($1e-5$ minimum learning rate) with a patience of 15 epochs.
+The model was trained using the AdamW optimizer (weight decay of $10^{-2}$) and a batch size of 128 windows to minimize the mean squared error (MSE) loss. The initial learning rate of $2 \times 10^{-2}$ was managed via a \texttt{ReduceLROnPlateau} scheduler, which decayed the rate by a factor of $0.5$ (minimum $10^{-5}$) upon encountering a 15-epoch plateau in validation loss. To prevent overfitting, early stopping was employed to halt training after 50 epochs without improvement, restoring the model weights that achieved the lowest validation loss.
 
-\subsection{Results and Discussion}
+\subsection{Results}
 Evaluation was performed on the testing MCU across phases (Table \ref{tab:baseline_results}) and across temperature bands and discharge protocols (Table \ref{tab:temp_protocol_results}).
 
 \input{baseline_results.tex}
