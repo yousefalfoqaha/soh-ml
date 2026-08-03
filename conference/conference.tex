@@ -18,14 +18,14 @@
 % discharge protocol distribution/temperature (with soh ranges) replace in table 1
 
 % DIAGRAMS
-% training loop diagram
-% maybe data pipeline diagram
+% training loop diagram (space)
 % actual model architecture diagram instead of placeholder
-% finetune diagram (frozen layers)
-% diagram showing pfi bucketing
+% finetune diagram (frozen layers) (space)
+% diagram showing pfi bucketing (space)
 
 % EXPLANATION
-% oxford dataset intro, soh labelling, finetune train/val/test split and setup
+% explain pfi bucketing
+% MENTION PYTORCH AND GPU
 % intro + abstract + related works + conclusion
 % references
 
@@ -126,7 +126,7 @@ The components of the pre-processing pipeline are as follows:
 
 \begin{enumerate}
 	\item \textbf{Extract discharge cycles:} Using discharge start/end signals provided by the testing platform to filter only discharge cycles.
-    \item \textbf{Resampling and Channel Alignment:} Raw signals recorded by the test platform at up to $1\text{~kHz}$ ($1\text{~ms}$) were downsampled to a uniform $1\text{~Hz}$ ($1\text{~s}$). This eliminates sample-rate discrepancies across asynchronous channels in the raw MF4 files.
+    \item \textbf{Resampling:} Raw signals recorded by the test platform at up to $1\text{~kHz}$ ($1\text{~ms}$) were downsampled to a uniform $1\text{~Hz}$ ($1\text{~s}$). This eliminates sample-rate discrepancies across asynchronous channels in the raw MF4 files.
 	\item \textbf{Hierarchical Data Format (HDF5):} Converting each discharge cycle away from MF4 to HDF5 allows for O(1) disk reads when loading the dataset, while also only taking primary channels (V, I, T, $T_{amb}$) to reduce memory usage.
 	\item \textbf{Ambient temperature:} $T_{amb}$ is controlled by the test platform at a fixed value for each discharge cycle, thus an average value was taken and stored as an HDF5 attribute.
 	\item \textbf{SoH labelling:} Raw SoH is calculated for each discharge cycle and written to as an HDF5 attribute.
