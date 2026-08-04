@@ -18,10 +18,10 @@
 % discharge protocol distribution/temperature (with soh ranges) replace in table 1
 
 % DIAGRAMS
-% training loop diagram (space)
+% training loop diagram (space) (needed)
 % actual model architecture diagram instead of placeholder
-% finetune diagram (frozen layers) (space)
-% diagram showing pfi bucketing (space)
+% finetune diagram (frozen layers) (space) (needed)
+% diagram showing pfi bucketing (space) (needed)
 
 % EXPLANATION
 % explain pfi bucketing
@@ -286,7 +286,7 @@ Ground-truth SoH labeling was computed via Coulomb counting. Because all Oxford 
 
 \subsection{Fine-Tuning Setup}
 
-To evaluate whether the feature extraction backbone captured universal degradation dynamics, the 1D-CNN, FiLM, and BiGRU layers were frozen, leaving only the attention pooling mechanism and output regression head open for fine-tuning. The eight cells were partitioned into a 6/1/1 split, allocating Cells 1--6 for fine-tuning, Cell 7 for validation, and Cell 8 for testing (Table~\ref{tab:oxford_soh_summary}). Feature scaling bounds and hyperparameter settings were kept identical to the primary training setup.
+The 1D-CNN, FiLM, and BiGRU layers were frozen, leaving only the attention pooling mechanism and output regression head open for fine-tuning. The eight cells were partitioned into a 6/1/1 split, allocating Cells 1--6 for fine-tuning, Cell 7 for validation, and Cell 8 for testing (Table~\ref{tab:oxford_soh_summary}). Feature scaling bounds and hyperparameter settings were kept identical to the primary training setup.
 
 \subsection{Results}
 
@@ -305,31 +305,22 @@ As shown in Fig.~\ref{fig:oxford_trajectory}, the fine-tuned predictions closely
 \end{figure}
 
 
-\section{Feature Interpretability via Stratified PFI}
-\label{sec:pfi_analysis}
+\section{Feature Interpretability}
 
-Permutation Feature Importance (PFI) was conducted to measure which input features the model relies on for its predictions. Standard PFI measures performance degradation when an individual feature channel is permuted:
-\begin{equation}
-    \Delta \text{RMSE}_{j} = \text{RMSE}_{\text{perm}(j)} - \text{RMSE}_{\text{base}}, \quad j \in \{V, I, T, T_{\text{amb}}\}
-\end{equation}
+\subsection{Stratified Permutation Feature Importance (PFI)}
+PFI artificially inflates feature significance by generating physically invalid sequences, such as injecting dynamic high-current pulses into constant-current profiles. To isolate genuine predictive reliance, a protocol-stratified PFI was implemented. Permutations were strictly constrained within strata defined by discharge protocol, ambient temperature, and discharge rate. This ensures the model is evaluated exclusively against physically realistic sequences. Ambient temperature ($T_{\text{amb}}$) was excluded from permutation, as it acts as a constant scalar within each stratification bucket.
 
-However, permuting features across the unconstrained dataset generates physically invalid feature combinations, as each discharge protocol imposes strict boundaries on voltage and current dynamics. To preserve physical validity, a protocol-stratified PFI was implemented, permuting feature channels exclusively within their respective discharge protocols.
+\subsection{Results}
+The stratified PFI results (Table~\ref{tab:pfi_results} and Fig.~\ref{fig:pfi_importance}) demonstrate that current ($I$) and voltage ($V$) are the primary drivers of model predictions across all protocols. While neural network architectures obscure deterministic algebraic extraction, the model's heavy reliance on $V$ and $I$ aligns directly with fundamental degradation mechanics. As State of Health (SoH) decreases, solid-electrolyte interphase (SEI) growth increases internal resistance, intrinsically altering the voltage response to a given current load. The model's prioritization of these features suggests it successfully leverages these underlying electro-chemical markers rather than dataset artifacts. 
 
 \input{pfi_results.tex}
+
+Furthermore, feature reliance shifts dynamically based on thermal dissipation. Under Constant discharge, sustained continuous loads cause significant heat accumulation, leading the model to additionally utilize surface temperature ($T$) ($\Delta\text{RMSE} = +0.0130$). Under dynamic profiles (HPPC and Pulse), rapid current transitions and rest periods allow for localized heat dissipation, reducing the predictive utility of surface thermal signals.
 
 \begin{figure}[H]
     \centerline{\includegraphics[width=\columnwidth]{pfi_importance.pdf}}
     \caption{Protocol-stratified Permutation Feature Importance ($\Delta\text{RMSE}$) across input channels ($I, V, T, T_{\text{amb}}$).}
     \label{fig:pfi_importance}
 \end{figure}
-
-The stratified PFI results (Table~\ref{tab:pfi_results} and Fig.~\ref{fig:pfi_importance}) reveal key physical insights:
-\begin{itemize}
-    \item \textbf{Primary Electrochemical Signals:} Current ($I$) and voltage ($V$) consistently emerge as the most vital features across all protocols.
-    \item \textbf{Thermal Signal Interaction:} Under Constant discharge, sustained loads cause heat accumulation, leading the model to actively utilize cell surface temperature ($T$) ($\Delta\text{RMSE} = +0.0130$).
-    \item \textbf{Dynamic Dissipation Shift:} Under dynamic profiles (HPPC and Pulse), rapid current transitions allow localized heat dissipation, causing reliance on $T$ to drop. Concurrently, $T_{\text{amb}}$ importance increases ($\Delta\text{RMSE} = +0.1383$ and $+0.1563$), indicating that FiLM conditioning effectively anchors predictions to ambient baseline bounds when surface thermal signals fluctuate rapidly.
-\end{itemize}
-
-
 
 \end{document}

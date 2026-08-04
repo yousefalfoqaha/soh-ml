@@ -132,13 +132,11 @@ class PermutationImportanceEvaluator:
         base_inst_pred = self.engine.aggregate_per_instance(base_preds, window_to_inst)
 
         protocol_windows = defaultdict(list)
-        # New: Track micro-strata indices within each protocol
         protocol_strata_windows = defaultdict(lambda: defaultdict(list))
 
         for w_idx, proto in enumerate(window_to_proto):
             protocol_windows[proto].append(w_idx)
 
-            # Build the strict stratum key based on protocol, temp, and discharge rate
             inst = inst_by_id[window_to_inst[w_idx]]
             stratum = f"{proto}_{inst.temp_center}_{inst.discharge_rate}"
             protocol_strata_windows[proto][stratum].append(w_idx)
@@ -157,7 +155,6 @@ class PermutationImportanceEvaluator:
             ]
             baseline[p] = MetricsAggregator.compute(p, results)
 
-        # 3. Permutation
         pfi_results: dict[str, dict[str, PfiResult]] = {f.name: {} for f in features}
 
         for spec in features:
@@ -171,9 +168,7 @@ class PermutationImportanceEvaluator:
                 for _ in range(self.repeats):
                     X_perm, cond_perm = X.clone(), conditions.clone()
 
-                    # Permute strictly within each micro-stratum to preserve physical validity
                     for stratum, bucket_idx in protocol_strata_windows[p].items():
-                        # If a stratum only has 1 window, it cannot be permuted with itself
                         if len(bucket_idx) < 2:
                             continue
 
