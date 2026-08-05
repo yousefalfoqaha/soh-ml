@@ -22,8 +22,12 @@
 % finetune diagram (frozen layers) (space) (needed)
 
 % EXPLANATION
-% MENTION PYTORCH AND GPU
-% intro + abstract + related works + conclusion
+% justifications of architecture, for exmaple: CNNs have been increasingly adopted to extract features from time-series data, such as TCNs
+% mention shuffling mechanics (to break symmetry) 
+% mention pytorch and gpu
+% maybe mention the coding stack
+% intro (wtih related works)
+% abstract
 % references
 
 \begin{document}
@@ -168,7 +172,6 @@ Given a sequence of $V$, $I$, and $T$ over a discharge cycle, conditioned on $T_
 
 \subsection{Estimator Architecture}
 
-% justifications of architecture, for exmaple: CNNs have been increasingly adopted to extract features from time-series data, such as TCNs, yada yada
 A window of sequences $V$, $I$, and $T$ of length $N$ pass through a stem 1D Convolutional Neural Network (1D-CNN) layer followed by two strided 1D-CNN blocks ($2\times$, $4\times$ base channels; GroupNorm, LeakyReLU, dropout), followed by Feature-wise Linear Modulation (FiLM) conditioning on $T_{\text{amb}}$:
 
 \begin{equation}
@@ -347,5 +350,6 @@ While neural network architectures obscure deterministic algebraic extraction, t
 
 Furthermore, feature reliance shifts dynamically based on thermal dissipation. Under Constant discharge, sustained continuous loads cause significant heat accumulation, leading the model to additionally utilize surface temperature ($T$) ($\Delta\text{RMSE} = +0.0130$). Under dynamic profiles (HPPC and Pulse), rapid current transitions and rest periods allow for localized heat dissipation, reducing the predictive utility of surface thermal signals.
 
+\section{Conclusion}
 
 \end{document}
