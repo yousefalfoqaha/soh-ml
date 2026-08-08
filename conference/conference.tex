@@ -22,7 +22,6 @@
 % finetune diagram (frozen layers) (space) (needed)
 
 % EXPLANATION
-% for preprocessing pipeline, perhaps parapgraph is enough honestly, but also have justifications
 % feature scaling definitely add a justification that dataset has wide temperature bands, so z score may compress them, there are many papers out there
 % compress oxford validation SoH labelling that you used coloumb counting, much shorter
 % mention shuffling mechanics (to break symmetry) 
@@ -125,16 +124,10 @@ Initial measurements were taken across constant, pulse, HPPC, and WLTC protocols
 \input{temp_distribution.tex}
 
 \subsection{Pre-processing Pipeline}
-As per the dataset engineer's advice, voltage (V), current (A), temperature (T), and ambient temperature ($T_{amb}$) are primary channels recorded from the test platform's sensors.
-The components of the pre-processing pipeline are as follows:
-
-\begin{enumerate}
-	\item \textbf{Extract discharge cycles:} Using discharge start/end signals provided by the testing platform to filter only discharge cycles.
-	\item \textbf{Resampling:} Raw signals recorded by the test platform at up to $1\text{~kHz}$ ($1\text{~ms}$) were downsampled to a uniform $1\text{~Hz}$ ($1\text{~s}$). This eliminates sample-rate discrepancies across asynchronous channels in the raw MF4 files.
-	\item \textbf{Hierarchical Data Format (HDF5):} Converting each discharge cycle away from MF4 to HDF5 allows for O(1) disk reads when loading the dataset, while also only taking primary channels (V, I, T, $T_{amb}$) to reduce memory usage.
-	\item \textbf{Ambient temperature:} $T_{amb}$ is controlled by the test platform at a fixed value for each discharge cycle, thus an average value was taken and stored as an HDF5 attribute.
-	\item \textbf{SoH labelling:} Raw SoH is calculated for each discharge cycle and written to as an HDF5 attribute.
-\end{enumerate}
+As per the dataset engineer's advice, voltage ($V$), current ($I$), temperature ($T$), and ambient temperature ($T_{amb}$) are primary channels recorded from the test platform's sensors.
+A script was used to isolate discharge periods using start/end signals provided by the testing platform to filter only discharge cycles. Raw cycles recorded at up to $1\text{~kHz}$ ($1\text{~ms}$) were downsampled to $1\text{~Hz}$ ($1\text{~s}$).
+For each cycle, the mean value of $T_{amb}$ was taken since it is a fixed condition set by the test platform.
+The MF4 cycles were then consolidated into a single Hierarchical Data Format (HDF5) \cite{hdf5} file using \texttt{h5py} \cite{h5py}. This structure allows $V$, $I$, and $T$ matrices to be stored as $N$-dimensional arrays. Consolidating the raw files into a single binary container eliminates file-handling overhead, provides $O(1)$ random-access indexing for data loading, and presents a uniform interface for model training.
 
 \subsection{SoH Labeling}
 Raw SoH for each discharge cycle was computed via Coulomb counting:
