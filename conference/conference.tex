@@ -58,15 +58,22 @@
 \end{IEEEkeywords}
 
 \section{Introduction}
-With the electric vehicle (EV) market share surpassing 20\% of new global car sales, battery management systems (BMS) in EVs rely on accurate state of health (SoH) estimations to ensure a margin of safety in maintaining critical vehicle components. While SoH, in the capacity sense, is defined as $\mathrm{SOH}_C = C / C_{\mathrm{init}}$, microscopic manufacturing variations cause each lithium ion battery (LiB) to follow a highly non-linear degradation trajectory; this makes tracking SoH a non-trivial task, especially in realistic driving scenarios. Data-driven approaches typically employ diagnostic frameworks for real-time EV monitoring; by extracting instant features from available charge-discharge windows, they dynamically track sudden non-linear aging mechanisms like solid electrolyte interphase (SEI) layer growth and lithium plating as they occur.
+With the electric vehicle (EV) market share surpassing 20\% of new global car sales \cite{iea_ev_outlook_2024}, battery management systems (BMS) in EVs rely on accurate state of health (SoH) estimations to ensure a margin of safety in maintaining critical vehicle components.
+While SoH, in the capacity sense, is defined as $\mathrm{SOH}_C = C / C_{\mathrm{init}}$ \cite{birkl2017degradation}, microscopic manufacturing variations cause each lithium-ion battery (LiB) to follow a highly non-linear degradation trajectory; this makes tracking SoH a non-trivial task, especially in realistic driving scenarios.
+Data-driven approaches typically employ diagnostic frameworks for real-time EV monitoring \cite{hu2020battery, lipu2023data}; by extracting instant features from available charge-discharge windows, they dynamically track sudden non-linear aging mechanisms like solid electrolyte interphase (SEI) layer growth and lithium plating as they occur \cite{okane2022degradation}.
 
-Recent diagnostic models combine convolutional neural networks (CNN) for spatial feature extraction with recurrent neural networks (RNN), such as Long Short-Term Memory (LSTM) or Gated Recurrent Units (GRU), to model temporal dependencies common in LiB degredation. These networks frequently integrate attention mechanisms to weight cycle data and utilize support vector machines (SVM) for final SoH regression. Other studies incorporate preprocessing techniques like Whale Optimization Algorithm-Variational Modal Decomposition (WOA-VMD) to filter cyclic noise, or explore neural ordinary differential equations (NODE) to model continuous capacity decay.
+Recent diagnostic models combine convolutional neural networks (CNN) for spatial feature extraction with recurrent neural networks (RNN), such as Long Short-Term Memory (LSTM) \cite{li2025anode, chen2023cnnlstm} or Gated Recurrent Units (GRU) \cite{xia2023bigru, chen2023skdan}, to model temporal dependencies common in LiB degradation.
+These networks frequently integrate attention mechanisms to weight cycle data \cite{wei2023dualattn, chen2023skdan} and utilize support vector machines (SVM) or support vector regression (SVR) for final SoH regression \cite{zhang2025woavmd, li2025issasvr}.
 
-Because generating battery degradation data is a laborious and time-consuming process, the vast majority of these models are trained and benchmarked on open-datasets such as NASA Ames, Oxford, CALCE, TJU, and HUST. While these datasets offer varied cell chemistries, they restrict model evaluation to constant-current (CC) charging phases and narrow ambient temperatures.
+Because generating battery degradation data is a laborious and time-consuming process, the vast majority of these models are trained and benchmarked on open-datasets such as NASA Ames \cite{saha2007battery}, Oxford \cite{birkl2017oxford}, CALCE \cite{pecht2011calce}, TJU \cite{wang2024tju}, and HUST \cite{li2021hust}.
+While these datasets offer varied cell chemistries, they restrict model evaluation to constant-current (CC) charging phases and narrow ambient temperatures.
 
-Thus, to complement existing benchmark datasets, a multi-protocol LiB degradation dataset was developed in collaboration with the University of Wuppertal. This dataset comprises 8 Samsung INR21700-50E LiBs, which were cycled across a wide temperature spectrum (-20°C to 45°C) using a combination of realistic operational protocols, including the Worldwide Harmonised Light Vehicles Test Cycle (WLTC), Hybrid Pulse Power Characterization (HPPC), pulse, and constant-current segments.
+Thus, to complement existing benchmark datasets, a multi-protocol LiB degradation dataset was developed in collaboration with the University of Wuppertal \cite{uni_wuppertal_ees}.
+This dataset comprises 8 Samsung INR21700-50E LiBs \cite{samsung_50e_spec}, which were cycled across a wide temperature spectrum (-20°C to 45°C) using a combination of realistic operational protocols, including the Worldwide Harmonised Light Vehicles Test Cycle (WLTC) \cite{wltc_unece}, Hybrid Pulse Power Characterization (HPPC) \cite{hppc_usabc}, pulse, and constant-current segments.
 
-To establish a benchmark baseline, evaluation was performed on a diagnostic estimator combining CNN, BiGRU, and attention pooling layers. We evaluate this baseline across the dataset's temperature bands and protocols, and verify its cross-dataset transferability by fine-tuning it on the Oxford Battery Degradation Dataset. A comparative summary of public battery datasets and estimation frameworks is provided in Table \ref{tab:related_works}.
+To establish a benchmark baseline, evaluation was performed on a diagnostic estimator combining CNN, BiGRU, and attention pooling layers.
+We evaluate this baseline across the dataset's temperature bands and protocols, and verify its cross-dataset transferability by fine-tuning it on the Oxford Battery Degradation Dataset.
+A comparative summary of public battery datasets and estimation frameworks is provided in Table \ref{tab:related_works}.
 
 \begin{table*}[htbp]
 	\caption{Comparison of Benchmark Battery Degradation Datasets and Diagnostic Estimation Frameworks}
@@ -91,7 +98,9 @@ To establish a benchmark baseline, evaluation was performed on a diagnostic esti
 \section{Data Processing}
 
 \subsection{Dataset}
-The dataset was obtained from the Scienlab SL1007A charge-discharge testing platform, where eight Samsung INR21700-50E lithium-ion cells were tested from fresh SoH levels to beyond EOL. Telemetry of each cell was recorded using Measurement and Control Units (MCU1--MCU8) and exported using the ASAM Measurement Data Format (MF4). Cell specifications are given in Table \ref{tab:cell_specs}.
+The dataset was obtained from the Scienlab SL1007A charge-discharge testing platform, where eight Samsung INR21700-50E LiBs were cycled from fresh SoH levels to beyond end-of-life \cite{scienlab_sl1007a}.
+Telemetry of each cell was recorded using Measurement and Control Units (MCU) and exported as ASAM Measurement Data Format (MF4) files \cite{asam_mdf4} using \texttt{asammdf} \cite{asammdf}.
+Cell specifications are given in Table \ref{tab:cell_specs}.
 
 \begin{table}[H]
 	\caption{CELL SPECIFICATIONS}
@@ -113,7 +122,7 @@ The dataset was obtained from the Scienlab SL1007A charge-discharge testing plat
 	\end{center}
 \end{table}
 
-Initial measurements were taken across constant, pulse, HPPC, and WLTC protocols (Fig. \ref{fig:protocols}), with ambient temperatures at -20, -10, -5, 0, 10, 25, and $40^{\circ}\text{C}$. Constant and pulse protocols were tested at 0.1, 0.5, 1.0, and 2.0C. Cyclic aging was then performed using constant discharge at 1.0C and $25^{\circ}\text{C}$. Post aging measurements were taken using the same procedure as the initial phase (excluding WLTC). Exact distributions are shown in Table \ref{tab:temp_phase_matrix}.
+Initial measurements were taken across constant, pulse, HPPC, and WLTC protocols (Fig. \ref{fig:protocols}), with ambient temperatures at $-20$, $-10$, $-5$, $0$, $10$, $25$, and $40^{\circ}\text{C}$. Constant and pulse protocols were tested at $0.1$, $0.5$, $1.0$, and $2.0$C. Cyclic aging was then performed using constant discharge at $1.0$C and $25^{\circ}\text{C}$. Post aging measurements were taken using the same procedure as the initial phase (excluding WLTC). Exact distributions are shown in Table \ref{tab:temp_phase_matrix}.
 
 \begin{figure}[H]
 	\centerline{\includegraphics[width=\columnwidth]{discharge_protocols.pdf}}
@@ -127,7 +136,7 @@ Initial measurements were taken across constant, pulse, HPPC, and WLTC protocols
 As per the dataset engineer's advice, voltage ($V$), current ($I$), temperature ($T$), and ambient temperature ($T_{amb}$) are primary channels recorded from the test platform's sensors.
 A script was used to isolate discharge periods using start/end signals provided by the testing platform to filter only discharge cycles. Raw cycles recorded at up to $1\text{~kHz}$ ($1\text{~ms}$) were downsampled to $1\text{~Hz}$ ($1\text{~s}$).
 For each cycle, the mean value of $T_{amb}$ was taken since it is a fixed condition set by the test platform.
-The MF4 cycles were then consolidated into a single Hierarchical Data Format (HDF5) \cite{hdf5} file using \texttt{h5py} \cite{h5py}. This structure allows $V$, $I$, and $T$ matrices to be stored as $N$-dimensional arrays. Consolidating the raw files into a single binary container eliminates file-handling overhead, provides $O(1)$ random-access indexing for data loading, and presents a uniform interface for model training.
+The MF4 cycles were then consolidated into a single Hierarchical Data Format (HDF5) \cite{hdf5} file using \texttt{h5py} \cite{h5py}. This structure allows $V$, $I$, and $T$ matrices to be stored as $N$-dimensional arrays. Furthermore, metadata such as the discharge protocol, testing phase, ambient temperature, discharge rate, date-time, cycle index, and target SoH are embedded directly into each cycle as scalar attributes. Consolidating the raw files into a single HDF5 container eliminates MF4 file-handling overhead, provides $O(1)$ random-access indexing for data loading, and presents a uniform interface for model training.
 
 \subsection{SoH Labeling}
 Raw SoH for each discharge cycle was computed via Coulomb counting:
