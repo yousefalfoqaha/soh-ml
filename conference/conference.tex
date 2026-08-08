@@ -22,7 +22,6 @@
 % finetune diagram (frozen layers) (space) (needed)
 
 % EXPLANATION
-% rewrite test protocols to be one parapgrah, shorter and simpler
 % for preprocessing pipeline, perhaps parapgraph is enough honestly, but also have justifications
 % feature scaling definitely add a justification that dataset has wide temperature bands, so z score may compress them, there are many papers out there
 % compress oxford validation SoH labelling that you used coloumb counting, much shorter
@@ -79,13 +78,13 @@ To establish a benchmark baseline, evaluation was performed on a diagnostic esti
 		\hline
 		\textbf{Dataset / Study} & \textbf{Cell Form / Chemistry}          & \textbf{Temperature Range} & \textbf{Discharge Protocols} & \textbf{Baseline Evaluated} \\
 		\hline
-		NASA Ames                & \makecell[l]{18650 Cylindrical                                                                                                    \\ LCO-NCA} & $20^\circ\mathrm{C}$ to $30^\circ\mathrm{C}$ & Constant Current & SVR, LSTM, ANODE \\
+		NASA Ames                & \makecell[l]{18650 Cylindrical                                                                                                    \\ LCO-NCA} & $20^\circ\mathrm{C}$ to $30^\circ\mathrm{C}$ & CC & SVR, LSTM, ANODE \\
 		\hline
-		Oxford Dataset 1         & \makecell[l]{Pouch / LCO                                                                                                          \\ ($740\,\mathrm{mAh}$)} & $40^\circ\mathrm{C}$ (Static) & Constant Current & Dual-Attn Graph CNN \\
+		Oxford Dataset 1         & \makecell[l]{Pouch / LCO                                                                                                          \\ ($740\,\mathrm{mAh}$)} & $40^\circ\mathrm{C}$ (Static) & CC & Dual-Attn Graph CNN \\
 		\hline
 		HUST Dataset             & \makecell[l]{18650 Cylindrical                                                                                                    \\ LFP} & Uncontrolled Ambient & Multi-step CC & Deep Transfer Learning \\
 		\hline
-		\textbf{This Work}       & \makecell[l]{\textbf{21700 Cylindrical}                                                                                           \\ \textbf{NMC ($5.0\,\mathrm{Ah}$)}} & \textbf{$-20^\circ\mathrm{C}$ to $45^\circ\mathrm{C}$} & \makecell[l]{\textbf{WLTC} \\ \textbf{HPPC} \\ \textbf{Pulse} \\ \textbf{Constant Current}} & \textbf{CNN+BiGRU+Attn} \\
+		\textbf{This Work}       & \makecell[l]{\textbf{21700 Cylindrical}                                                                                           \\ \textbf{NMC ($5.0\,\mathrm{Ah}$)}} & \textbf{$-20^\circ\mathrm{C}$ to $45^\circ\mathrm{C}$} & \textbf{WLTC, HPPC, Pulse, CC} & \textbf{CNN+BiGRU+Attn} \\
 		\hline
 	\end{tabular}
 \end{table*}
@@ -115,40 +114,13 @@ The dataset was obtained from the Scienlab SL1007A charge-discharge testing plat
 	\end{center}
 \end{table}
 
-\subsection{Test Protocols}
-Each cell underwent four discharge protocols across various ambient temperatures: Constant, Pulse, Hybrid Pulse Power Characterization (HPPC), and the Worldwide Harmonised Light Vehicles Test Cycle (WLTC) (Fig. \ref{fig:protocols}). Testing was divided into three sequential phases (Table \ref{tab:phase_soh_summary}):
-
-\begin{enumerate}
-	\item \textbf{Initial measurements:} Baseline testing on fresh cells across all four protocols.
-	\item \textbf{Accelerated aging:} Cyclic aging using constant 1C discharge cycles at $25^{\circ}\text{C}$.
-	\item \textbf{Post-aging measurement:} Re-testing using the baseline protocols.
-\end{enumerate}
-
-Temperature band distribution across phases is given in Table \ref{tab:temp_phase_matrix}.
+Initial measurements were taken across constant, pulse, HPPC, and WLTC protocols (Fig. \ref{fig:protocols}), with ambient temperatures at -20, -10, -5, 0, 10, 25, and $40^{\circ}\text{C}$. Constant and pulse protocols were tested at 0.1, 0.5, 1.0, and 2.0C. Cyclic aging was then performed using constant discharge at 1.0C and $25^{\circ}\text{C}$. Post aging measurements were taken using the same procedure as the initial phase (excluding WLTC). Exact distributions are shown in Table \ref{tab:temp_phase_matrix}.
 
 \begin{figure}[H]
 	\centerline{\includegraphics[width=\columnwidth]{discharge_protocols.pdf}}
 	\caption{Discharge profiles for the four test protocols: Constant, Pulse, HPPC, and WLTC.}
 	\label{fig:protocols}
 \end{figure}
-
-\begin{table}[H]
-	\caption{SOH, C-RATES, AND PROTOCOL DISTRIBUTION}
-	\label{tab:phase_soh_summary}
-	\begin{center}
-		\begin{tabular}{lccc}
-			\hline
-			\textbf{Phase} & \textbf{SoH Range (\%)} & \textbf{Current Rates}       & \textbf{Protocols} \\
-			\hline
-			Initial        & $98 - 100$              & $0.5\text{C}$ to $4\text{C}$ & \makecell{Constant \\ Pulse \\ HPPC \\ WLTC} \\
-			\hline
-			Aging          & $70 - 98$               & $1\text{C}$                  & Constant           \\
-			\hline
-			Post-Aging     & $< 70 - 80$             & $0.5\text{C}$ to $4\text{C}$ & \makecell{Constant \\ Pulse \\ HPPC} \\
-			\hline
-		\end{tabular}
-	\end{center}
-\end{table}
 
 \input{temp_distribution.tex}
 
@@ -295,9 +267,7 @@ The model was fine-tuned on the Oxford Battery Degradation Dataset 1 to measure 
 	\end{center}
 \end{table}
 
-\subsection{SoH Labeling}
-
-Ground-truth SoH labeling was computed via Coulomb counting. Because all Oxford discharge sequences were recorded under uniform conditions ($1\text{C}$ discharge rate at $40^\circ\text{C}$), the raw calculated values were directly adopted as target labels without requiring polynomial trajectory fitting.
+SoH labels were computed via Coulomb counting (1). SoH ranges for each cell are given in Table \ref{tab:oxford_soh_summary}.
 
 \begin{table}[H]
 	\caption{Oxford Cell SoH Range and Cycle Count}
