@@ -19,16 +19,14 @@
 
 % DIAGRAMS
 % actual model architecture diagram instead of placeholder
-% finetune diagram (frozen layers) (space) (needed)
 
 % EXPLANATION
 % feature scaling definitely add a justification that dataset has wide temperature bands, so z score may compress them, there are many papers out there
-% compress oxford validation SoH labelling that you used coloumb counting, much shorter
 % mention shuffling mechanics (to break symmetry) 
 % mention pytorch and gpu
 % maybe mention the coding stack
 % abstract
-% references
+% references in tables etc.
 
 \begin{document}
 
@@ -67,9 +65,8 @@ These networks frequently integrate attention mechanisms to weight cycle data \c
 
 Because generating battery degradation data is a laborious and time-consuming process, the vast majority of these models are trained and benchmarked on open-datasets such as NASA Ames \cite{saha2007battery}, Oxford \cite{birkl2017oxford}, CALCE \cite{pecht2011calce}, TJU \cite{wang2024tju}, and HUST \cite{li2021hust}.
 While these datasets offer varied cell chemistries, they restrict model evaluation to constant-current (CC) charging phases and narrow ambient temperatures.
-
 Thus, to complement existing benchmark datasets, a multi-protocol LiB degradation dataset was developed in collaboration with the University of Wuppertal \cite{uni_wuppertal_ees}.
-This dataset comprises 8 Samsung INR21700-50E LiBs \cite{samsung_50e_spec}, which were cycled across a wide temperature spectrum (-20°C to 45°C) using a combination of realistic operational protocols, including the Worldwide Harmonised Light Vehicles Test Cycle (WLTC) \cite{wltc_unece}, Hybrid Pulse Power Characterization (HPPC) \cite{hppc_usabc}, pulse, and constant-current segments.
+This dataset comprises 8 Samsung INR21700-50E LiBs \cite{samsung_50e_spec}, which were cycled across a wide temperature spectrum (-20°C to 45°C) using a combination of realistic operational protocols, including the Worldwide Harmonised Light Vehicles Test Cycle (WLTC) \cite{wltc_unece}, Hybrid Pulse Power Characterization (HPPC) \cite{hppc_usabc}, pulse, and CC segments.
 
 To establish a benchmark baseline, evaluation was performed on a diagnostic estimator combining CNN, BiGRU, and attention pooling layers.
 We evaluate this baseline across the dataset's temperature bands and protocols, and verify its cross-dataset transferability by fine-tuning it on the Oxford Battery Degradation Dataset.
@@ -122,11 +119,11 @@ Cell specifications are given in Table \ref{tab:cell_specs}.
 	\end{center}
 \end{table}
 
-Initial measurements were taken across constant, pulse, HPPC, and WLTC protocols (Fig. \ref{fig:protocols}), with ambient temperatures at $-20$, $-10$, $-5$, $0$, $10$, $25$, and $40^{\circ}\text{C}$. Constant and pulse protocols were tested at $0.1$, $0.5$, $1.0$, and $2.0$C. Cyclic aging was then performed using constant discharge at $1.0$C and $25^{\circ}\text{C}$. Post aging measurements were taken using the same procedure as the initial phase (excluding WLTC). Exact distributions are shown in Table \ref{tab:temp_phase_matrix}.
+Initial measurements were taken across CC, pulse, HPPC, and WLTC protocols (Fig. \ref{fig:protocols}), with ambient temperatures at $-20$, $-10$, $-5$, $0$, $10$, $25$, and $40^{\circ}\text{C}$. CC and pulse protocols were tested at $0.1$, $0.5$, $1.0$, and $2.0$C. Cyclic aging was then performed using CC discharge at $1.0$C and $25^{\circ}\text{C}$. Post aging measurements were taken using the same procedure as the initial phase (excluding WLTC). Exact distributions are shown in Table \ref{tab:temp_phase_matrix}.
 
 \begin{figure}[H]
 	\centerline{\includegraphics[width=\columnwidth]{discharge_protocols.pdf}}
-	\caption{Discharge profiles for the four test protocols: Constant, Pulse, HPPC, and WLTC.}
+	\caption{Discharge profiles for the four test protocols: CC, Pulse, HPPC, and WLTC.}
 	\label{fig:protocols}
 \end{figure}
 
@@ -134,9 +131,17 @@ Initial measurements were taken across constant, pulse, HPPC, and WLTC protocols
 
 \subsection{Pre-processing Pipeline}
 As per the dataset engineer's advice, voltage ($V$), current ($I$), temperature ($T$), and ambient temperature ($T_{amb}$) are primary channels recorded from the test platform's sensors.
-A script was used to isolate discharge periods using start/end signals provided by the testing platform to filter only discharge cycles. Raw cycles recorded at up to $1\text{~kHz}$ ($1\text{~ms}$) were downsampled to $1\text{~Hz}$ ($1\text{~s}$).
+A script was used to filter discharge periods using start/end signals provided by the testing platform. Raw cycles recorded at up to $1\text{~kHz}$ ($1\text{~ms}$) were downsampled to $1\text{~Hz}$ ($1\text{~s}$).
 For each cycle, the mean value of $T_{amb}$ was taken since it is a fixed condition set by the test platform.
-The MF4 cycles were then consolidated into a single Hierarchical Data Format (HDF5) \cite{hdf5} file using \texttt{h5py} \cite{h5py}. This structure allows $V$, $I$, and $T$ matrices to be stored as $N$-dimensional arrays. Furthermore, metadata such as the discharge protocol, testing phase, ambient temperature, discharge rate, date-time, cycle index, and target SoH are embedded directly into each cycle as scalar attributes. Consolidating the raw files into a single HDF5 container eliminates MF4 file-handling overhead, provides $O(1)$ random-access indexing for data loading, and presents a uniform interface for model training.
+
+The MF4 cycles were then consolidated into a single Hierarchical Data Format (HDF5) \cite{hdf5} file using \texttt{h5py} \cite{h5py}. This structure allows $V$, $I$, and $T$ matrices to be stored as $N$-dimensional arrays. Furthermore, metadata including the discharge protocol, testing phase, ambient temperature, discharge rate, date-time, cycle index, and target SoH are embedded directly into each cycle as scalar attributes. Consolidating the raw files into a single HDF5 container eliminates MF4 file-handling overhead, provides $O(1)$ random-access indexing for data loading, and presents a uniform interface for model training.
+
+
+\begin{figure}[H]
+	\centerline{\includegraphics[width=\columnwidth]{dataset_structure.pdf}}
+	\caption{HDF5 dataset structure of MCUs, cycles, and attributes.}
+	\label{fig:dataset_structure}
+\end{figure}
 
 \subsection{SoH Labeling}
 Raw SoH for each discharge cycle was computed via Coulomb counting:
@@ -191,24 +196,19 @@ where $\gamma$ and $\beta$ are learned affine parameters. The modulated features
 
 where $h_t$ is the BiGRU output at timestep $t$. The pooled representation $z$ is projected to a scalar SoH estimate.
 
-\begin{figure}[H]
-	\centerline{\includegraphics[width=\columnwidth]{architecture.pdf}}
+\begin{figure*}[t]
+	\centering
+	\includegraphics[width=\textwidth]{architecture.pdf}
 	\caption{Model architecture: 1D-CNN blocks, BiGRU, and FiLM conditioning on $T_{\text{amb}}$.}
 	\label{fig:architecture}
-\end{figure}
+\end{figure*}
 
 
 \subsection{Training Setup}
 
 Raw input sequences (1,500 to 30,000 timesteps per cycle) were sliced into 1,500-timestep windows (15 minutes) with a 1,000-timestep stride. The model predicted the SoH for each window, and these predictions were averaged to produce a single SoH value per cycle.
-
-% \begin{figure}[H]
-% 	\centerline{\includegraphics[width=\columnwidth]{window_splitting.pdf}}
-% 	\caption{Window-splitting logic during training.}
-% 	\label{fig:window_slicing}
-% \end{figure}
-
-The eight MCUs were split 6/1/1 into training, validation, and test sets. MCUs 2 and 7 were held out for validation and testing, respectively, as their SoH range ($95.6$--$67.5\%$) falls within the training range ($97.4$--$42.3\%$), evaluating interpolation rather than extrapolation.
+The eight MCUs were split 6/1/1 into training, validation, and test sets.
+MCUs 2 and 7 were held out for validation and testing, respectively, as their SoH range ($95.6$--$67.5\%$) falls within the training range ($97.4$--$42.3\%$), evaluating interpolation rather than extrapolation.
 
 In total, the training set comprised 1,071 cycles (7,227 windows), while the validation set contained 185 cycles (1,341 windows). All input sequences and conditions were normalized using robust min-max scaling. The Estimator's hyperparameters are given in Table \ref{tab:estimator_hparams}.
 
@@ -217,22 +217,18 @@ In total, the training set comprised 1,071 cycles (7,227 windows), while the val
 The model was trained using the AdamW optimizer (weight decay of $10^{-2}$) and a batch size of 128 windows to minimize the mean squared error (MSE) loss. The \texttt{ReduceLROnPlateau} scheduler was used on an initial learning rate of $2 \times 10^{-2}$, which decayed by a factor of $0.5$ (minimum $10^{-5}$) upon encountering a 15-epoch plateau in validation loss. Early stopping was used to halt training after 50 epochs without improvement, restoring the model weights that achieved the lowest validation loss.
 
 \subsection{Results}
-Evaluation was performed on the testing MCU across phases (Table \ref{tab:baseline_results}) and across temperature bands and discharge protocols (Table \ref{tab:temp_protocol_results}).
-
-\input{baseline_results.tex}
-
-Most overall metrics derive from the aging phase, which achieves low error. The initial phase reaches $1.2\%$ error (RMSE $0.016$). Aging is the strongest phase ($R^2 = 0.89$, $1.2\%$ error, RMSE $0.013$).
-
-Notably, Initial and Aging achieve similar metrics despite the former having far fewer cycles and greater protocol/temperature variance. Post-Aging error rises to $3.8\%$ (RMSE $0.034$).  Overall, $R^2 = 0.020$ and $1.8\%$ error across $62.8$--$96.2\%$ SoH.
+Evaluation was performed on the testing MCU across testing phases, temperature bands and discharge protocols (Table \ref{tab:temp_protocol_results}).
 
 \input{temp_protocol_results.tex}
 
-The $40^{\circ}\text{C}$ band achieves the highest fit among temperature slices ($R^2 = 0.96$, $1.9\%$ error), while $-20^{\circ}\text{C}$ trails slightly ($R^2 = 0.94$, $2.7\%$ error) and $-10^{\circ}\text{C}$ shows the lowest fit among the higher-cycle bands ($R^2 = 0.86$, $4.3\%$ error).
-
-Within each temperature band, the estimator performs consistently across the SoH spectrum. $-20^{\circ}\text{C}$ spans $68.1$--$93.7\%$ at $R^2 = 0.94$ and $40^{\circ}\text{C}$ spans $66.8$--$95.1\%$ at $R^2 = 0.96$.
-
-Across discharge protocols, (performance metrics) with each protocol spanning multiple temperature bands (Table~\ref{tab:phase_soh_summary}). Constant and HPPC achieve the highest fits ($R^2 = 0.92$ and $0.99$), and Pulse follows ($R^2 = 0.95$). WLTC has an $R^2$ of -0.11, but this reflects $3$ cycles restricted to the Initial phase, giving a narrow SoH band ($92.1$--$95.3\%$) (Table~\ref{tab:phase_soh_summary}).
-
+Most overall metrics derive from the aging phase, which achieves low error.
+The initial phase reaches $1.3\%$ error (RMSE $0.015$).
+Aging is the strongest phase ($R^2 = 0.94$, $1.1\%$ error, RMSE $0.011$).
+Notably, Initial and Aging achieve similar metrics despite the former having far fewer cycles and greater protocol/temperature variance.
+Post-Aging error rises to $3.0\%$ (RMSE $0.031$). Overall, $R^2 = 0.96$ and $1.6\%$ error across $62.8$--$96.2\%$ SoH.
+The $40^{\circ}\text{C}$ band achieves a high fit among temperature slices ($R^2 = 0.98$, $1.5\%$ error), while $-20^{\circ}\text{C}$ trails behind with the lowest fit ($R^2 = 0.83$, $4.0\%$ error) and $-10^{\circ}\text{C}$ shows a strong fit among the higher-cycle bands ($R^2 = 0.98$, $2.4\%$ error).
+Within each temperature band, the estimator performs consistently across the SoH spectrum. $-20^{\circ}\text{C}$ spans $68.1$--$93.7\%$ at $R^2 = 0.83$ and $40^{\circ}\text{C}$ spans $66.8$--$95.1\%$ at $R^2 = 0.98$.
+Across discharge protocols, (performance metrics) with each protocol spanning multiple temperature bands (Table~\ref{tab:phase_soh_summary}). Constant and HPPC achieve the highest fits ($R^2 = 0.97$ and $0.99$), and Pulse follows ($R^2 = 0.93$). WLTC has an $R^2$ of $0.10$, but this reflects $2$ cycles restricted to the Initial phase, giving a narrow SoH band ($92.1$--$95.3\%$) (Table~\ref{tab:phase_soh_summary}).
 The testing MCU's SoH trajectory with predicted points is shown in Fig.~\ref{fig:test_trajectory}.
 
 \begin{figure}[H]
@@ -300,7 +296,6 @@ The 1D-CNN, FiLM, and BiGRU layers were frozen, leaving only the attention pooli
 \subsection{Results}
 
 Evaluating the model in a zero-shot setting yields severe performance degradation, resulting in an RMSE of $0.406$ ($46.8\%$ error) and an $R^2$ of $-36.66$ (Table~\ref{tab:oxford_results}).
-
 However, unfreezing only the attention pooling mechanism and output regression head resolves this domain discrepancy. Upon fine-tuning, performance improves dramatically, achieving an RMSE of $0.008$, an MAE of $0.006$, an $R^2$ of $0.99$, and reducing the mean percentage error to $0.8\%$ across all 76 evaluation cycles.
 
 \input{oxford_results.tex}
@@ -336,19 +331,13 @@ The stratified PFI results (Table~\ref{tab:pfi_results} and Fig.~\ref{fig:pfi_im
 
 \section{Discussion}
 The aging phase is the strongest, likely due to limited variance in discharge protocol (1C discharge at 25\textdegree C). Its constant 1C discharge yields a consistent waveform the CNN/BiGRU exploits, while still tracking declining SoH across discharges.
-
 Degradation capture holds across the full SoH range within a given temperature, not only at its extremes.
-
 likely because MCU SoH trajectories diverge after accelerated aging (Fig.~\ref{fig:soh_trajectories}), producing a less-represented distribution in training.
-
 R2 is negative for the initial phase, this is likely due to the phase's narrow SoH range ($91.8$--$96.2\%$): with little target variance, $R^2$ amplifies residual error and becomes uninformative. Therefore, RMSE and \%Err are the meaningful metrics here.
-
 Initial and aging are similar in performance, suggesting the model generalizes well across both phases despite varying temperatures.
-
 Notably, $-20^{\circ}\text{C}$ is $45^{\circ}\text{C}$ from the $25^{\circ}\text{C}$ baseline, versus $15^{\circ}\text{C}$ for $40^{\circ}\text{C}$, so its $R^2 = 0.94$ reflects generalization across a larger temperature shift than the $40^{\circ}\text{C}$ result.
 
 This offset is expected due to the significant domain shift across nominal capacity ($5.0\,\text{Ah}$ to $740\,\text{mAh}$), cathode chemistry (NMC to LCO), and cell form factor (cylindrical to pouch).
-
 While neural network architectures obscure deterministic algebraic extraction, the model's heavy reliance on $V$ and $I$ aligns directly with fundamental degradation mechanics. As State of Health (SoH) decreases, solid-electrolyte interphase (SEI) growth increases internal resistance, intrinsically altering the voltage response to a given current load. The model's prioritization of these features suggests it successfully leverages these underlying electro-chemical markers rather than dataset artifacts.
 
 Furthermore, feature reliance shifts dynamically based on thermal dissipation. Under Constant discharge, sustained continuous loads cause significant heat accumulation, leading the model to additionally utilize surface temperature ($T$) ($\Delta\text{RMSE} = +0.0130$). Under dynamic profiles (HPPC and Pulse), rapid current transitions and rest periods allow for localized heat dissipation, reducing the predictive utility of surface thermal signals.
