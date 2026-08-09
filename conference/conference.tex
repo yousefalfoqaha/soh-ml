@@ -14,6 +14,10 @@
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 
+% FiLM conditioning paper citation + justification???
+% rewrite discussion better
+% conclusion
+% hdf5 diagram
 
 \begin{document}
 
@@ -35,7 +39,7 @@
 \maketitle
 
 \begin{abstract}
-	Accurate State of Health (SoH) estimation in electric vehicle battery management systems is critical for operational safety. However, existing public benchmark datasets restrict model evaluation to narrow ambient temperatures and constant-current charging phases. To address this gap, we evaluate a baseline diagnostic estimator on a novel multi-protocol degradation dataset comprising eight Samsung INR21700-50E lithium-ion cells cycled across extreme temperatures ($-20^\circ\text{C}$ to $45^\circ\text{C}$) under realistic driving profiles, including WLTC, HPPC, pulse, and constant discharge segments. The proposed baseline framework combines 1D Convolutional Neural Networks for spatial feature extraction, Feature-wise Linear Modulation (FiLM) for ambient temperature conditioning, a Bidirectional Gated Recurrent Unit (BiGRU) for temporal modeling, and additive attention pooling. Evaluated on holdout cells across 14.2 million timesteps, the model achieves an overall SoH estimation error of $1.6\%$ ($\text{RMSE} = 0.016$, $R^2 = 0.96$). Furthermore, unfreezing the attention pooling head during fine-tuning on the Oxford Battery Degradation Dataset demonstrates cross-dataset transferability, reducing fine-tuned error to $0.8\%$ ($\text{RMSE} = 0.008$, $R^2 = 0.99$). Stratified Permutation Feature Importance confirms that current and voltage drive predictive performance, aligning with fundamental electro-chemical degradation mechanics.
+	Accurate State of Health estimation in electric vehicle battery management systems is critical for operational safety. However, existing public benchmark datasets restrict model evaluation to narrow ambient temperatures and constant-current charging phases. To address this gap, we evaluate a baseline diagnostic estimator on a novel multi-protocol degradation dataset comprising eight Samsung INR21700-50E lithium-ion cells cycled across extreme temperatures ($-20^\circ\text{C}$ to $45^\circ\text{C}$) under realistic driving profiles, including WLTC, HPPC, pulse, and constant discharge segments. The proposed baseline framework combines 1D Convolutional Neural Networks for spatial feature extraction, Feature-wise Linear Modulation (FiLM) for ambient temperature conditioning, a Bidirectional Gated Recurrent Unit (BiGRU) for temporal modeling, and additive attention pooling. Evaluated on holdout cells across 14.2 million timesteps, the model achieves an overall SoH estimation error of $1.6\%$ ($\text{RMSE} = 0.016$, $R^2 = 0.96$). Furthermore, unfreezing the attention pooling head during fine-tuning on the Oxford Battery Degradation Dataset demonstrates cross-dataset transferability, reducing fine-tuned error to $0.8\%$ ($\text{RMSE} = 0.008$, $R^2 = 0.99$). Stratified Permutation Feature Importance confirms that current and voltage drive predictive performance, aligning with fundamental electro-chemical degradation mechanics.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -116,7 +120,7 @@ Raw SoH for each discharge cycle was computed via Coulomb counting:
 	\text{SoH}_{\text{raw}} = \frac{\int_{t_{\text{start}}}^{t_{\text{end}}} |I(t)| \, dt}{C_{\text{nom}}}
 \end{equation}
 
-Measured capacity depends on discharge rate and $T_{\text{amb}}$, so raw SoH is not directly comparable across cycles. Discharge cycles at $1\text{C}$ and $25^\circ\text{C}$, the only condition common to all phases (Table \ref{tab:phase_soh_summary}), are used as reference points. A 4th degree polynomial is fit over cycle index to these reference points, giving a per-MCU SoH trajectory (Fig. \ref{fig:soh_trajectories}). Reference-point SoH ranges and cycle counts are given in Table \ref{tab:mcu_soh_summary}.
+Measured capacity depends on discharge rate and $T_{\text{amb}}$, so raw SoH is not directly comparable across cycles. Discharge cycles at $1\text{C}$ and $25^\circ\text{C}$, the only condition common to all phases, are used as reference points. A 4th degree polynomial is fit over cycle index to these reference points, giving a per-MCU SoH trajectory (Fig. \ref{fig:soh_trajectories}). Reference-point SoH ranges and cycle counts are given in Table \ref{tab:mcu_soh_summary}.
 
 
 \begin{figure}
@@ -150,7 +154,7 @@ Given a sequence of $V$, $I$, and $T$ over a discharge cycle, conditioned on $T_
 
 \subsection{Estimator Architecture}
 
-A window of sequences $V$, $I$, and $T$ of length $N$ pass through a stem 1D Convolutional Neural Network (1D-CNN) layer followed by two strided 1D-CNN blocks ($4\times$ base channels; GroupNorm, LeakyReLU, dropout), followed by Feature-wise Linear Modulation (FiLM) conditioning on $T_{\text{amb}}$:
+As illustrated in Fig. \ref{fig:architecture}, A window of sequences $V$, $I$, and $T$ of length $N$ pass through a stem 1D Convolutional Neural Network (1D-CNN) layer followed by two strided 1D-CNN blocks ($4\times$ base channels; GroupNorm, LeakyReLU, dropout), followed by Feature-wise Linear Modulation (FiLM) conditioning on $T_{\text{amb}}$:
 
 \begin{equation}
 	\text{FiLM}(h) = (1 + \gamma(T_{\text{amb}})) \odot h + \beta(T_{\text{amb}})
@@ -176,7 +180,7 @@ where $h_t$ is the BiGRU output at timestep $t$. The pooled representation $z$ i
 
 Raw input sequences (1,500 to 30,000 timesteps per cycle) were sliced into 1,500-timestep windows (15 minutes) with a 1,000-timestep stride. The model predicted the SoH for each window, and these predictions were averaged to produce a single SoH value per cycle.
 The eight MCUs were split 6/1/1 into training, validation, and test sets.
-MCUs 2 and 7 were held out for validation and testing, respectively, as their SoH range ($95.6$--$67.5\%$) falls within the training range ($97.4$--$42.3\%$), evaluating interpolation rather than extrapolation. The validation set was shuffled once to break temporal symmetry between the initial, aging, and post-aging phases. The training set was shuffled every epoch.
+MCUs 2 and 7 were held out for validation and testing, respectively, as their SoH range ($95.6$--$67.5\%$) falls within the training range ($97.4$--$42.3\%$). The validation set was shuffled once to break temporal symmetry between the initial, aging, and post-aging phases. The training set was shuffled every epoch.
 
 In total, the training set comprised 1,071 cycles (7,227 windows), while the validation set contained 185 cycles (1,341 windows). All input sequences and conditions were normalized using robust min-max scaling. The Estimator's hyperparameters are given in Table \ref{tab:estimator_hparams}.
 
@@ -194,7 +198,7 @@ Notably, Initial and Aging achieve similar metrics despite the former having far
 Post-Aging error rises to $3.0\%$ (RMSE $0.031$). Overall, $R^2 = 0.96$ and $1.6\%$ error across $62.8$--$96.2\%$ SoH.
 The $40^{\circ}\text{C}$ band achieves a high fit among temperature slices ($R^2 = 0.98$, $1.5\%$ error), while $-20^{\circ}\text{C}$ trails behind with the lowest fit ($R^2 = 0.83$, $4.0\%$ error) and $-10^{\circ}\text{C}$ shows a strong fit among the higher-cycle bands ($R^2 = 0.98$, $2.4\%$ error).
 $-20^{\circ}\text{C}$ spans $68.1$--$93.7\%$ at $R^2 = 0.83$ and $40^{\circ}\text{C}$ spans $66.8$--$95.1\%$ at $R^2 = 0.98$.
-Across discharge protocols, (performance metrics) with each protocol spanning multiple temperature bands (Table~\ref{tab:phase_soh_summary}). Constant and HPPC achieve the highest fits ($R^2 = 0.97$ and $0.99$), and Pulse follows ($R^2 = 0.93$). WLTC has an $R^2$ of $0.10$, but this reflects $2$ cycles restricted to the Initial phase, giving a narrow SoH band ($92.1$--$95.3\%$) (Table~\ref{tab:phase_soh_summary}).
+Across discharge protocols, (performance metrics) with each protocol spanning multiple temperature bands (Table~\ref{tab:temp_protocol_matrix}). Constant and HPPC achieve the highest fits ($R^2 = 0.97$ and $0.99$), and Pulse follows ($R^2 = 0.93$). WLTC has an $R^2$ of $0.10$, but this reflects $2$ cycles restricted to the Initial phase, giving a narrow SoH band ($92.1$--$95.3\%$) (Table~\ref{tab:mcu_soh_summary}).
 The testing MCU's SoH trajectory with predicted points is shown in Fig.~\ref{fig:test_trajectory}.
 
 \input{temp_protocol_results.tex}
@@ -212,26 +216,26 @@ The testing MCU's SoH trajectory with predicted points is shown in Fig.~\ref{fig
 The model was fine-tuned on the Oxford Battery Degradation Dataset 1 to evaluate cross-dataset transferability. The dataset comprises eight Kokam $740\,\text{mAh}$ LCO pouch cells (SLPB526495) aged under constant 1C discharge at $40^\circ\mathrm{C}$. This presents a severe domain shift in cell architecture, chemistry, and capacity relative to the Samsung INR21700-50E cylindrical cells ($5.0\,\text{Ah}$) used for primary training.
 SoH labels were computed via Coulomb counting (1). SoH ranges for each cell are given in Table \ref{tab:oxford_soh_summary}.
 
-% \begin{table}
-% 	\caption{Oxford Cell SoH Range and Cycle Count}
-% 	\label{tab:oxford_soh_summary}
-% 	\centering
-% 	\footnotesize
-% 	\begin{tabular}{lcc}
-% 		\hline
-% 		\textbf{Cell} & \textbf{SoH Range (\%)} & \textbf{Cycles} \\
-% 		\hline
-% 		Cell 1        & $100.0$--$82.1$         & 82              \\
-% 		Cell 2        & $100.0$--$81.4$         & 82              \\
-% 		Cell 3        & $100.0$--$83.5$         & 82              \\
-% 		Cell 4        & $100.0$--$82.9$         & 82              \\
-% 		Cell 5        & $100.0$--$84.1$         & 82              \\
-% 		Cell 6        & $100.0$--$83.0$         & 82              \\
-% 		Cell 7        & $100.0$--$82.5$         & 82              \\
-% 		Cell 8        & $100.0$--$81.9$         & 82              \\
-% 		\hline
-% 	\end{tabular}
-% \end{table}
+\begin{table}[H]
+	\caption{Oxford Cell SoH Range and Cycle Count}
+	\label{tab:oxford_soh_summary}
+	\centering
+	\footnotesize
+	\begin{tabular}{lcc}
+		\hline
+		\textbf{Cell} & \textbf{SoH Range (\%)} & \textbf{Cycles} \\
+		\hline
+		1             & $100.0$--$82.1$         & 115             \\
+		2             & $100.0$--$81.4$         & 160             \\
+		3             & $100.0$--$83.5$         & 124             \\
+		4             & $100.0$--$82.9$         & 102             \\
+		5             & $100.0$--$84.1$         & 143             \\
+		6             & $100.0$--$83.0$         & 107             \\
+		7             & $100.0$--$82.5$         & 171             \\
+		8             & $100.0$--$81.9$         & 141             \\
+		\hline
+	\end{tabular}
+\end{table}
 
 \subsection{Fine-Tuning Setup}
 
