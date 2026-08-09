@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from voltgan.config import (
     CONFERENCE_DIR,
     FEATURE_DISPLAY_NAMES,
     PHASE_ORDER,
+    PROTOCOL_ORDER,
     REFERENCE_DISCHARGE_RATE,
     REFERENCE_TEMPERATURE,
     TESTING_MCUS,
@@ -21,12 +23,11 @@ from voltgan.config import (
     VALIDATION_MCUS,
 )
 from voltgan.dataset import (
-    DatasetAnalyzer,
     InstanceRepository,
     SohCurveFitter,
     StatisticsCalculator,
 )
-from voltgan.utils import HLine, LatexTable, TableRow
+from voltgan.utils import HLine, LatexTable, RowItem, TableRow
 
 _DISCHARGE_PROTOCOL_PANELS = [
     (
@@ -80,41 +81,94 @@ def main() -> None:
         items=feature_rows,
     ).write()
 
-    # temperature distribution table
-    dist = DatasetAnalyzer.compute_temp_distribution(instances, PHASE_ORDER)
-    n = len(dist.temp_bands)
+    # temperature x protocol distribution table
+    tp_counts: defaultdict[tuple[int, str], int] = defaultdict(int)
+    for inst in instances:
+        tp_counts[(inst.temp_center, inst.protocol)] += 1
+
+    temp_bands = sorted({tc for (tc, _) in tp_counts})
+    protocols = [
+        p for p in PROTOCOL_ORDER if any((tc, p) in tp_counts for tc in temp_bands)
+    ]
+    num_protos = len(protocols)
+
+    tp_rows: list[TableRow | HLine] = []
+    col_totals = [0] * num_protos
+    for tc in temp_bands:
+        row_cells = []
+        for j, proto in enumerate(protocols):
+            c = tp_counts.get((tc, proto), 0)
+            row_cells.append(str(c))
+            col_totals[j] += c
+        row_total = sum(int(c) for c in row_cells)
+        tp_rows.append(
+            TableRow(
+                cells=[
+                    rf"${tc}^{{\circ}}\text{{C}}$",
+                    *row_cells,
+                    str(row_total),
+                ]
+            )
+        )
 
     LatexTable(
         out_path=CONFERENCE_DIR / "temp_distribution.tex",
-        caption="TEMPERATURE BAND DISTRIBUTION",
-        label="tab:temp_phase_matrix",
-        align="l" + "c" * n,
-        headers=["Phase", *[f"${tc}$" for tc in dist.temp_bands]],
+        caption="TEMPERATURE AND PROTOCOL DISTRIBUTION",
+        label="tab:temp_protocol_matrix",
+        align="l" + "c" * (num_protos + 1),
+        headers=["Temp Band", *protocols, "Total"],
         items=[
-            *[
-                TableRow(cells=[label, *[str(c) for c in row_counts]])
-                for label, row_counts in zip(dist.phase_order, dist.matrix)
-            ],
+            *tp_rows,
             HLine(),
-            TableRow(cells=["Total", *[str(t) for t in dist.col_totals]], bold=True),
+            TableRow(
+                cells=["Total", *[str(t) for t in col_totals], str(sum(col_totals))],
+                bold=True,
+            ),
         ],
     ).write()
 
-    # mcu soh summary table
+    # mcu soh summary table (per-phase reference-condition SoH ranges)
     fitter = SohCurveFitter(
         reference_temperature=REFERENCE_TEMPERATURE,
         reference_discharge_rate=REFERENCE_DISCHARGE_RATE,
     )
 
-    mcu_summaries = DatasetAnalyzer.compute_mcu_summaries(instances, fitter)
+    by_mcu: defaultdict[str, list] = defaultdict(list)
+    for inst in instances:
+        by_mcu[inst.cell_id].append(inst)
+
+    def _mcu_num(mcu_str: str) -> int:
+        match = re.search(r"\d+", mcu_str)
+        return int(match.group()) if match else 0
+
+    mcu_rows: list[RowItem] = []
+    for mcu_name, insts in sorted(by_mcu.items(), key=lambda x: _mcu_num(x[0])):
+        if not insts:
+            continue
+
+        label = mcu_name.replace("mcu", "").replace("cell", "")
+        ref_insts = fitter.filter_reference(insts)
+
+        phase_cells: list[str] = []
+        for phase in PHASE_ORDER:
+            phase_ref = [i for i in ref_insts if i.phase == phase]
+            if not phase_ref:
+                phase_cells.append("--")
+            else:
+                soh_vals = [i.soh for i in phase_ref]
+                phase_cells.append(
+                    f"${max(soh_vals) * 100:.1f}$--${min(soh_vals) * 100:.1f}$"
+                )
+
+        mcu_rows.append(TableRow(cells=[label, *phase_cells, str(len(insts))]))
 
     LatexTable(
         out_path=CONFERENCE_DIR / "mcu_soh_summary.tex",
-        caption="MCU SOH RANGE AND CYCLE COUNT",
+        caption="MCU SOH RANGE BY PHASE",
         label="tab:mcu_soh_summary",
-        align="lcc",
-        headers=["MCU", r"SoH Range (\%)", "Cycles"],
-        items=[TableRow(cells=rec.to_latex_cells()) for rec in mcu_summaries],
+        align="lcccc",
+        headers=["MCU", "Initial", "Aging", "Post-Aging", "Cycles"],
+        items=mcu_rows,
     ).write()
 
     # soh trajectories plot

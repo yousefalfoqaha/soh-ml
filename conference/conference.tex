@@ -14,11 +14,6 @@
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 
-% TABLES
-% discharge protocol distribution/temperature (with soh ranges) replace in table 1
-
-% DIAGRAMS
-% actual model architecture diagram instead of placeholder
 
 \begin{document}
 
@@ -90,7 +85,7 @@ A comparative summary of public battery datasets and estimation frameworks is pr
 The dataset was obtained from the Scienlab SL1007A charge--discharge testing platform, where eight Samsung INR21700-50E lithium-ion cells (NMC chemistry, rated capacity $C_{\mathrm{init}} = 5.0\,\text{Ah}$, voltage range $2.5$--$4.2\,\text{V}$, maximum rated C-rates of 2C charge / 4C discharge) were cycled from fresh SoH levels to beyond end-of-life \cite{scienlab_sl1007a}.
 Telemetry of each cell was recorded using Measurement and Control Units (MCU) and exported as ASAM Measurement Data Format (MF4) files \cite{asam_mdf4}.
 
-Initial measurements were taken across CC, pulse, HPPC, and WLTC protocols (Fig. \ref{fig:protocols}), with ambient temperatures at $-20$, $-10$, $-5$, $0$, $10$, $25$, and $40^{\circ}\text{C}$. CC and pulse protocols were tested at $0.1$, $0.5$, $1.0$, and $2.0$C. Cyclic aging was then performed using CC discharge at $1.0$C and $25^{\circ}\text{C}$. Post aging measurements were taken using the same procedure as the initial phase (excluding WLTC). Exact distributions are shown in Table \ref{tab:temp_phase_matrix}.
+Initial measurements were taken across CC, pulse, HPPC, and WLTC protocols (Fig. \ref{fig:protocols}), with ambient temperatures at $-20$, $-10$, $-5$, $0$, $10$, $25$, and $40^{\circ}\text{C}$. CC and pulse protocols were tested at $0.1$, $0.5$, $1.0$, and $2.0$C. Cyclic aging was then performed using CC discharge at $1.0$C and $25^{\circ}\text{C}$. Post aging measurements were taken using the same procedure as the initial phase (excluding WLTC). The distribution of cycles across temperature bands and discharge protocols is shown in Table \ref{tab:temp_protocol_matrix}.
 
 \begin{figure}
 	\centerline{\includegraphics[width=\columnwidth]{discharge_protocols.pdf}}

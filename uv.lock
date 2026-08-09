@@ -970,6 +970,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "scikit-learn" },
+    { name = "scipy" },
     { name = "torch" },
 ]
 
@@ -981,6 +982,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.4.4" },
     { name = "pandas", specifier = ">=3.0.3" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
+    { name = "scipy", specifier = ">=1.14.0" },
     { name = "torch", specifier = ">=2.12.0" },
 ]
 
