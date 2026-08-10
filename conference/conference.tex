@@ -179,7 +179,7 @@ where $h_t$ is the BiGRU output at timestep $t$. The pooled representation $z$ w
 \begin{figure*}
 	\centering
 	\includegraphics[width=\textwidth]{architecture.pdf}
-	\caption{Model architecture: 1D-CNN blocks, BiGRU, and FiLM conditioning on $T_{\text{amb}}$.}
+	\caption{Model architecture: 1D-CNN blocks, FiLM conditioning on $T_{\text{amb}}$, BiGRU, and attention pooling.}
 	\label{fig:architecture}
 \end{figure*}
 
@@ -225,26 +225,7 @@ The predicted trajectory in Fig.~\ref{fig:test_trajectory} closely tracked the f
 The model was fine-tuned on the Oxford Battery Degradation Dataset 1 to evaluate cross-dataset transferability. The dataset comprises eight Kokam $740\,\text{mAh}$ LCO pouch cells (SLPB526495) aged under constant 1C discharge at $40^\circ\mathrm{C}$. This presents a severe domain shift in cell architecture, chemistry, and capacity relative to the Samsung INR21700-50E cylindrical cells ($5.0\,\text{Ah}$) used for primary training.
 SoH labels were computed via Coulomb counting (1). SoH ranges for each cell are given in Table \ref{tab:oxford_soh_summary}.
 
-\begin{table}[H]
-	\caption{Oxford Cell SoH Range and Cycle Count}
-	\label{tab:oxford_soh_summary}
-	\centering
-	\footnotesize
-	\begin{tabular}{lcc}
-		\hline
-		\textbf{Cell} & \textbf{SoH Range (\%)} & \textbf{Cycles} \\
-		\hline
-		1             & $100.0$--$82.1$         & 115             \\
-		2             & $100.0$--$81.4$         & 160             \\
-		3             & $100.0$--$83.5$         & 124             \\
-		4             & $100.0$--$82.9$         & 102             \\
-		5             & $100.0$--$84.1$         & 143             \\
-		6             & $100.0$--$83.0$         & 107             \\
-		7             & $100.0$--$82.5$         & 171             \\
-		8             & $100.0$--$81.9$         & 141             \\
-		\hline
-	\end{tabular}
-\end{table}
+\input{oxford_soh_summary.tex}
 
 \subsection{Fine-Tuning Setup}
 

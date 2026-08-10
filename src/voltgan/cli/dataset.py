@@ -12,7 +12,11 @@ import numpy as np
 
 from voltgan.config import (
     CONFERENCE_DIR,
+    EVALUATION_PROVIDER,
     FEATURE_DISPLAY_NAMES,
+    OXFORD_TESTING_MCUS,
+    OXFORD_TRAINING_MCUS,
+    OXFORD_VALIDATION_MCUS,
     PHASE_ORDER,
     PROTOCOL_ORDER,
     REFERENCE_DISCHARGE_RATE,
@@ -169,6 +173,48 @@ def main() -> None:
         align="lcccc",
         headers=["MCU", "Initial", "Aging", "Post-Aging", "Cycles"],
         items=mcu_rows,
+    ).write()
+
+    # oxford soh summary table (per-cell SoH range and cycle count)
+    oxford_repo = InstanceRepository(provider=EVALUATION_PROVIDER)
+    oxford_cells = (
+        OXFORD_TRAINING_MCUS + OXFORD_VALIDATION_MCUS + OXFORD_TESTING_MCUS
+    )
+    oxford_instances = oxford_repo.load(oxford_cells)
+    print(f"Loaded {len(oxford_instances)} Oxford instances")
+
+    oxford_by_cell: defaultdict[str, list] = defaultdict(list)
+    for inst in oxford_instances:
+        oxford_by_cell[inst.cell_id].append(inst)
+
+    def _cell_num(cell_str: str) -> int:
+        match = re.search(r"\d+", cell_str)
+        return int(match.group()) if match else 0
+
+    oxford_rows: list[RowItem] = []
+    for cell_name, cell_insts in sorted(
+        oxford_by_cell.items(), key=lambda x: _cell_num(x[0])
+    ):
+        if not cell_insts:
+            continue
+
+        label = cell_name.replace("cell", "")
+        soh_vals = [i.soh for i in cell_insts if not np.isnan(i.soh)]
+        if soh_vals:
+            soh_range = f"${max(soh_vals) * 100:.1f}$--${min(soh_vals) * 100:.1f}$"
+        else:
+            soh_range = "--"
+        oxford_rows.append(
+            TableRow(cells=[label, soh_range, str(len(cell_insts))])
+        )
+
+    LatexTable(
+        out_path=CONFERENCE_DIR / "oxford_soh_summary.tex",
+        caption="OXFORD CELL SOH RANGE AND CYCLE COUNT",
+        label="tab:oxford_soh_summary",
+        align="lcc",
+        headers=["Cell", "SoH Range (\\%)", "Cycles"],
+        items=oxford_rows,
     ).write()
 
     # soh trajectories plot
